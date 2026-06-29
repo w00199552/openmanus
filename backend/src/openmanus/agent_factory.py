@@ -94,6 +94,16 @@ work yourself.
 
 def _build_model() -> BaseChatModel:
     provider = settings.model_provider.lower()
+    # For self-signed 公司内网证书, set SSL_VERIFY=false in .env. We inject a
+    # verify-disabled httpx client into ChatOpenAI (the OpenAI-compatible path
+    # used by company/internal models). ChatAnthropic doesn't accept a custom
+    # http client, so for it we rely on httpx's env (CURL_CA_BUNDLE / etc.) or
+    # the default verify behaviour.
+    import httpx
+
+    sync_http = httpx.Client(verify=settings.ssl_verify)
+    async_http = httpx.AsyncClient(verify=settings.ssl_verify)
+
     if provider == "anthropic":
         return ChatAnthropic(
             model=settings.model,
@@ -107,6 +117,8 @@ def _build_model() -> BaseChatModel:
         api_key=settings.openai_api_key,
         base_url=settings.openai_base_url,
         streaming=True,
+        http_client=sync_http,
+        http_async_client=async_http,
     )
 
 

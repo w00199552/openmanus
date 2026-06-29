@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # OpenAI-protocol credentials (kept for OpenAI/OpenRouter/Ollama use)
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
+    # Skip TLS certificate verification (set False for self-signed / 公司内网
+    # 自建模型证书). Affects BOTH providers' httpx clients.
+    ssl_verify: bool = True
 
     # --- Filesystem the agent works on -----------------------------------
     # Defaults to the current working directory so the agent edits real files.
