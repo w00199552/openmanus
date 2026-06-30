@@ -134,6 +134,19 @@ export class TeamStore {
         return; // a delta never bumps activity/preview (too high frequency)
       }
 
+      // DETAIL: a tool-call step appended to an existing message's details
+      // (e.g. a sub-agent's read_file/write_file, shown under its own speaker).
+      if (msg.detail != null) {
+        if (existing) {
+          const i = this.messages.indexOf(existing);
+          this.messages[i] = {
+            ...existing,
+            details: [...existing.details, msg.detail],
+          };
+        }
+        return;
+      }
+
       // CLOSE / overwrite: replace an existing streaming message with the
       // final full text (no duplicate bubble).
       if (existing && msg.content != null) {

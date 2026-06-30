@@ -26,7 +26,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 
-from .agui_bridge import AGUIBridge, _StreamState
+from .agui_bridge import AGUIBridge, _StreamState, _extract_text
 from .db import session_store
 
 logger = logging.getLogger(__name__)
@@ -97,14 +97,21 @@ async def _run_teamleader(
     )
 
     config = {"configurable": {"thread_id": team_id}}
-    final_text = ""
 
     try:
-        # Emit a synthetic "team started" group message.
-        await _push_group_message(
-            queue, team_id, speaker="teamleader",
-            text=f"📝 Team started. Task: {task_description[:120]}",
+        # Open a streaming group message for the teamleader's own thinking/
+        # task-breakdown text. As the teamleader reasons and decides to dispatch
+        # to specialists, its text deltas stream live into the team chat under a
+        # stable messageId (speaker=teamleader). Sub-agent work arrives via
+        # dispatch_task's own GROUP_MESSAGE pushes, interleaved naturally.
+        tl_msg_id = uuid.uuid4().hex
+        await _push_group_open(
+            queue, team_id,
+            msg_id=tl_msg_id, speaker="teamleader",
+            text=f"📝 Team started. Task: {task_description[:120]}\n\n",
         )
+
+        from langchain_core.messages import AIMessageChunk
 
         async for chunk in team_agent.astream(
             {"messages": [HumanMessage(content=task_description)]},
@@ -113,11 +120,23 @@ async def _run_teamleader(
             subgraphs=True,
             version="v2",
         ):
-            for frame in bridge._handle_chunk(chunk, st):
-                await queue.put(frame)
-                # capture teamleader text for the final group message
-        # pull final assistant text from state
+            if chunk.get("type") != "messages":
+                continue
+            data = chunk.get("data")
+            if not (isinstance(data, tuple) and len(data) == 2):
+                continue
+            msg, _meta = data
+            # forward the teamleader's TEXT deltas as group-message deltas.
+            # (Sub-agent work dispatched from here is surfaced separately by
+            # dispatch_task, so we only extract text here, not tool calls.)
+            if isinstance(msg, AIMessageChunk):
+                for text in _extract_text(msg.content):
+                    if text:
+                        await _push_group_delta(queue, msg_id=tl_msg_id, delta=text)
+
+        # pull final assistant text from state to finalize/close the bubble
         snapshot = await team_agent.aget_state(config)
+        final_text = ""
         for msg in reversed(getattr(snapshot, "values", {}).get("messages", [])):
             if getattr(msg, "type", "") == "ai":
                 content = getattr(msg, "content", "")
@@ -129,9 +148,11 @@ async def _run_teamleader(
                 final_text = str(content)
                 break
 
-        await _push_group_message(
-            queue, team_id, speaker="teamleader",
-            text=final_text or "(team finished)",
+        lead = f"📝 Team started. Task: {task_description[:120]}\n\n"
+        await _push_group_close(
+            queue, team_id,
+            msg_id=tl_msg_id, speaker="teamleader",
+            text=(lead + (final_text or "(no final summary)")),
         )
         await session_store.update(team_id, status="done")
     except Exception as exc:  # noqa: BLE001
@@ -220,6 +241,18 @@ async def _push_group_close(
         direction="chat",
         content=f"[{speaker}] {text}",
     )
+
+
+async def _push_group_detail(
+    queue: asyncio.Queue, *, msg_id: str, detail: str
+) -> None:
+    """Append a tool-call "detail" step to an existing streaming group message.
+
+    Used to surface a sub-agent's file operations (e.g. 'read_file: config.py')
+    under the right speaker's bubble, without creating a new message.
+    """
+    payload = {"type": "GROUP_MESSAGE", "messageId": msg_id, "detail": detail}
+    await queue.put(f"data: {json.dumps(payload, ensure_ascii=False)}\n\n")
 
 
 def _DONE_SENTINEL() -> dict:

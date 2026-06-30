@@ -67,17 +67,17 @@ async def _run_subagent(
     child_session_id: str,
     parent_config: dict[str, Any],
     on_text_delta=None,
+    on_tool=None,
 ) -> str:
     """Run the sub-agent on an isolated thread; return its final text answer.
 
-    Streams the agent's text deltas via ``on_text_delta(delta)`` when provided
-    (used to surface a sub-agent's live output into the team group chat). Uses
-    astream so the sub-agent's checkpointer thread fills in AND tokens can be
-    forwarded live, instead of ainvoke which blocks until done with no output.
+    Streams the agent's output via callbacks when provided (used to surface a
+    sub-agent's live activity into the team group chat):
+      * ``on_text_delta(delta)`` — each streamed text token
+      * ``on_tool(name)`` — when the sub-agent starts a tool call (e.g. read_file)
 
-    We reuse the SAME compiled agent graph (it already has the right model +
-    backend) but override its tools via the role's allow-list and run it on a
-    fresh thread (the child session id) so its history is isolated.
+    Uses astream so tokens can be forwarded live, instead of ainvoke which
+    blocks until done with no output.
     """
     from langchain_core.messages import AIMessageChunk, HumanMessage
 
@@ -95,8 +95,8 @@ async def _run_subagent(
     }
 
     # Run streaming so tokens can be forwarded live (and the checkpointer fills).
-    # We only extract TEXT deltas here (tool calls inside the sub-agent are not
-    # surfaced to the team chat — that would be too noisy; the final answer is).
+    # We extract TEXT deltas AND detect tool-call starts (to surface the
+    # sub-agent's file operations under its own speaker in the team chat).
     from ..agui_bridge import _extract_text
 
     try:
@@ -115,9 +115,19 @@ async def _run_subagent(
                 continue
             msg, _meta = data
             if isinstance(msg, AIMessageChunk):
+                # forward text tokens
                 for text in _extract_text(msg.content):
                     if text and on_text_delta:
                         await on_text_delta(text)
+                # detect tool-call starts (first fragment carries the name)
+                for tc in msg.tool_call_chunks or []:
+                    name = (
+                        tc.get("name")
+                        if isinstance(tc, dict)
+                        else getattr(tc, "name", None)
+                    )
+                    if name and on_tool:
+                        await on_tool(name)
     except Exception:
         logger.exception("sub-agent streaming failed; falling back to state read")
 
@@ -204,6 +214,7 @@ def make_dispatch_task_tool(
         from ..team_runner import (
             _push_group_close,
             _push_group_delta,
+            _push_group_detail,
             _push_group_open,
             teams as _team_registry,
         )
@@ -234,6 +245,14 @@ def make_dispatch_task_tool(
             if in_team:
                 await _push_group_delta(queue, msg_id=stream_msg_id, delta=delta)
 
+        async def _on_tool(name: str) -> None:
+            # surface the sub-agent's tool calls (read_file/write_file/...) as a
+            # detail step under its own speaker bubble in the team chat.
+            if in_team:
+                await _push_group_detail(
+                    queue, msg_id=stream_msg_id, detail=f"🔧 {name}"
+                )
+
         # Record the delegation edge.
         await session_store.add_link(
             from_session_id=parent_session_id,
@@ -252,6 +271,7 @@ def make_dispatch_task_tool(
                 child_session_id=child_id,
                 parent_config=parent_config,
                 on_text_delta=_on_delta,
+                on_tool=_on_tool,
             )
             await session_store.update(child_id, status="done")
         except Exception as exc:  # noqa: BLE001
