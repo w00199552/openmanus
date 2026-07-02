@@ -57,7 +57,8 @@ class ChatGLM(ChatOpenAI):
         if not choices:
             return gen_chunk
         delta = choices[0].get("delta") or {}
-        reasoning = delta.get("reasoning_content")
+        # GLM/智谱官方用 reasoning_content；公司 ascendvllm 部署可能用 reasoning。
+        reasoning = delta.get("reasoning_content") or delta.get("reasoning")
         if reasoning:
             # GLM streams reasoning token-by-token; accumulate into
             # additional_kwargs so _extract_reasoning can read it per-chunk.
