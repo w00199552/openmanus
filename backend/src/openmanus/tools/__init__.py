@@ -1,11 +1,21 @@
 """Custom tools for the openmanus agent."""
 
-from .dispatch_single import make_dispatch_single_tool
-from .dispatch_task import make_dispatch_task_tool
-from .dispatch_to_team import make_dispatch_to_team_tool
+from .mailbox_tools import (
+    make_dispatch_tool,
+    make_read_mailbox_tool,
+    make_send_message_tool,
+    make_start_team_tool,
+)
+from .whiteboard_tools import (
+    make_whiteboard_read_tool,
+    make_whiteboard_write_tool,
+)
 
 __all__ = [
-    "make_dispatch_single_tool",
-    "make_dispatch_task_tool",
-    "make_dispatch_to_team_tool",
+    "make_dispatch_tool",
+    "make_start_team_tool",
+    "make_send_message_tool",
+    "make_read_mailbox_tool",
+    "make_whiteboard_write_tool",
+    "make_whiteboard_read_tool",
 ]

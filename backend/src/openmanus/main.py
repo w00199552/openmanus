@@ -34,7 +34,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .agent_factory import build_agents
-from .api import run, sessions, teams
+from .api import sessions, streams
 from .api.sessions import workdir_router
 from .config import settings
 from .db import init_db, session_store
@@ -73,11 +73,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # AG-UI agent endpoint. CopilotKit runtime points its HttpAgent here.
-    app.include_router(run.router, prefix="/agents/main", tags=["agent"])
-    app.include_router(run.router, prefix="/agents", tags=["agent"])  # convenience
+    # Unified stream endpoints: POST /sessions/:id/messages, GET /sessions/:id/stream,
+    # GET /scopes/:id/stream, GET /health.
+    app.include_router(streams.router)
     app.include_router(sessions.router)
-    app.include_router(teams.router)
     app.include_router(workdir_router)
     return app
 

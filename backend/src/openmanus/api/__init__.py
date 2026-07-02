@@ -1,5 +1,5 @@
 """API routers package."""
 
-from . import run, sessions, teams
+from . import sessions, streams
 
-__all__ = ["run", "sessions", "teams"]
+__all__ = ["sessions", "streams"]

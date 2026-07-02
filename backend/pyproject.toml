@@ -1,7 +1,7 @@
 [project]
 name = "openmanus"
 version = "0.1.0"
-description = "opencode clone backend: deepagents + AG-UI endpoint for CopilotKit"
+description = "opencode clone backend: deepagents + unified session/messaging SSE"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,10 +12,11 @@ dependencies = [
     "deepagents>=0.1",
     "langchain>=0.3",
     "langchain-openai>=0.2",
+    "langchain-anthropic>=0.2",
     "langgraph>=0.6",
     "langgraph-checkpoint-sqlite>=2.0",
-    "ag-ui-protocol>=0.1",
     "aiosqlite>=0.22.1",
+    "sse-starlette>=3.4.5",
 ]
 
 [build-system]

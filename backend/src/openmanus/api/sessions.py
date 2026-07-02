@@ -1,21 +1,19 @@
 """Sessions REST API.
 
-CRUD for sessions (the agent-conversation nodes) plus a graph endpoint that
-returns the {nodes, links} collaboration view for reactflow. The frontend
-SessionStore (mobx) calls these — views never hit this directly.
+CRUD for sessions (the agent-conversation nodes). The history-flattening in
+``get_session`` reads the checkpointer and returns an assistant-ui-compatible
+message shape so the frontend can drop it straight into a Thread. Live streaming
+lives in ``streams.py`` (POST /sessions/:id/messages, GET /sessions/:id/stream).
 """
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..db import session_store
-from ..single_runner import singles as single_registry
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -25,6 +23,7 @@ class CreateSession(BaseModel):
     name: str | None = None
     title: str | None = None
     workdir: str | None = None
+    scope_id: str | None = None
     metadata: dict[str, Any] = {}
 
 
@@ -43,6 +42,7 @@ class SessionSummary(BaseModel):
     title: str | None = None
     model: str | None = None
     workdir: str | None = None
+    scope_id: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -55,50 +55,63 @@ async def create_session(body: CreateSession) -> dict:
         name=body.name,
         title=body.title,
         workdir=body.workdir,
+        scope_id=body.scope_id,
         metadata=body.metadata,
     )
 
 
 @router.get("", response_model=list[SessionSummary])
 @router.get("/", response_model=list[SessionSummary], include_in_schema=False)
-async def list_sessions(kind: str | None = None) -> list[dict]:
+async def list_sessions(
+    kind: str | None = None,
+    scope_id: str | None = None,
+    top_level: bool = False,
+) -> list[dict]:
+    """List sessions.
+
+    Filters (combinable):
+      - ``kind``            only sessions of this kind
+      - ``scope_id``        only members of this team scope
+      - ``top_level=true``  only top-level sessions (scope_id IS NULL)
+    With no filter, returns everything.
+    """
+    if top_level:
+        return await session_store.list(kind=kind, scope_id=None)
+    if scope_id is not None:
+        return await session_store.list(kind=kind, scope_id=scope_id)
     return await session_store.list(kind=kind)
 
 
 @router.get("/{session_id}")
 async def get_session(session_id: str, request: Request) -> dict:
-    """Session metadata + message history as a flat timeline.
+    """Session metadata + message history as an assistant-ui-compatible timeline.
 
     The history is read from the deepagents checkpointer for this thread and
-    flattened into the SAME segment shape the live stream produces, so the
-    frontend can drop it straight into ChatStore.items:
+    flattened into ThreadMessage-shaped entries the frontend MessagesStore can
+    use directly:
 
-      { kind:'user',          id, text }
-      { kind:'assistant-text', id, text }
-      { kind:'tool',          id, name, args, result }
-      { kind:'assistant-text', id, text }   # post-tool text
+      { role:'user'|'assistant', id, content:[ {type:'text',text} | {type:'tool-call',...} ] }
 
-    An AIMessage may carry text AND one or more tool_calls; each tool_call
-    becomes its own 'tool' segment (its result comes from the later
-    ToolMessage, matched by tool_call_id). This preserves the real
-    text→tool→text ordering.
+    An AIMessage may carry text AND tool_calls; each becomes a content part on
+    the same assistant message, preserving the real text→tool ordering. A later
+    ToolMessage back-fills the matching tool-call part's result.
     """
     s = await session_store.get(session_id)
     if not s:
         raise HTTPException(status_code=404, detail="session not found")
 
-    history: list[dict] = []
+    messages: list[dict] = []
     try:
         agent = request.app.state.agent
         snapshot = await agent.aget_state(
             {"configurable": {"thread_id": session_id}}
         )
-        messages = (getattr(snapshot, "values", {}) or {}).get("messages", [])
+        raw = (getattr(snapshot, "values", {}) or {}).get("messages", [])
 
-        # tool_call_id -> segment index, so a later ToolMessage can fill result
-        tool_seg_index: dict[str, int] = {}
+        # tool_call_id -> (msg_index, part_index) so a ToolMessage can back-fill.
+        tool_part_index: dict[str, tuple[int, int]] = {}
 
-        for msg in messages:
+        for msg in raw:
             mtype = getattr(msg, "type", "")
             mid = getattr(msg, "id", None) or ""
             content = getattr(msg, "content", "")
@@ -106,43 +119,59 @@ async def get_session(session_id: str, request: Request) -> dict:
             if mtype == "human":
                 text = _content_to_text(content)
                 if text.strip():
-                    history.append({"kind": "user", "id": mid, "text": text})
+                    messages.append({
+                        "role": "user", "id": mid or f"u-{len(messages)}",
+                        "content": [{"type": "text", "text": text}],
+                        "metadata": {"speaker": "user"},
+                    })
 
             elif mtype == "ai":
+                parts: list[dict] = []
                 text = _content_to_text(content)
                 if text.strip():
-                    history.append(
-                        {"kind": "assistant-text", "id": mid, "text": text}
-                    )
-                # each tool call the model issued -> a 'tool' segment
+                    parts.append({"type": "text", "text": text})
                 for tc in getattr(msg, "tool_calls", None) or []:
                     tcid = tc.get("id") or ""
-                    seg = {
-                        "kind": "tool",
-                        "id": tcid,
-                        "name": tc.get("name", "tool"),
+                    parts.append({
+                        "type": "tool-call",
+                        "toolCallId": tcid,
+                        "toolName": tc.get("name", "tool"),
                         "args": _stringify_args(tc.get("args")),
                         "result": None,
+                    })
+                    tool_part_index[tcid] = (len(messages), len(parts) - 1)
+                # reasoning/thinking trace (GLM reasoning_content) — surfaced so
+                # history reload shows the thinking region too.
+                from ..runner import _extract_reasoning
+                thinking = "".join(_extract_reasoning(msg))
+                # include the message even if only thinking (no text/tool) so the
+                # user can review prior reasoning on history reload.
+                if parts or thinking:
+                    msg_obj: dict = {
+                        "role": "assistant",
+                        "id": mid or f"a-{len(messages)}",
+                        "content": parts,
+                        "metadata": {"speaker": (s.get("name") or "assistant")},
                     }
-                    tool_seg_index[tcid] = len(history)
-                    history.append(seg)
+                    if thinking:
+                        msg_obj["thinking"] = thinking
+                    messages.append(msg_obj)
 
             elif mtype == "tool":
-                # back-fill the matching tool segment's result
                 tcid = getattr(msg, "tool_call_id", "") or ""
-                idx = tool_seg_index.get(tcid)
-                if idx is not None:
-                    history[idx]["result"] = _content_to_text(content)
+                loc = tool_part_index.get(tcid)
+                if loc is not None:
+                    mi, pi = loc
+                    messages[mi]["content"][pi]["result"] = _content_to_text(content)
     except Exception:
         # history is best-effort; never fail the whole response
         pass
 
-    s["messages"] = history
+    s["messages"] = messages
     return s
 
 
 def _content_to_text(content: Any) -> str:
-    """Normalize a message's content (str or content-block list) to text."""
     if isinstance(content, list):
         return " ".join(
             p.get("text", "") if isinstance(p, dict) else str(p) for p in content
@@ -151,7 +180,6 @@ def _content_to_text(content: Any) -> str:
 
 
 def _stringify_args(args: Any) -> str:
-    """Render a tool_call's args dict as a compact JSON string (for display)."""
     if not args:
         return ""
     try:
@@ -185,9 +213,8 @@ async def update_session(session_id: str, body: UpdateSession) -> dict:
 async def set_preview(session_id: str, body: UpdatePreview) -> dict:
     """Set the session's last-message preview (and optionally speaker).
 
-    The preview is merged into the session's metadata (NOT a full overwrite),
-    so existing metadata like parent/role/members is preserved. This is what
-    the session list shows as the second line (WeChat-style preview).
+    Merged into metadata (NOT a full overwrite) so existing metadata like
+    parent/role/members is preserved.
     """
     existing = await session_store.get(session_id)
     if not existing:
@@ -214,7 +241,7 @@ async def reset_session(session_id: str, request: Request) -> dict:
 
     Used by the default entry's "new chat": the default item is permanent and
     can't be deleted, so starting fresh means wiping its message history. The
-    session row itself is untouched (only its checkpointer thread is cleared).
+    session row itself is untouched.
     """
     if not await session_store.get(session_id):
         raise HTTPException(status_code=404, detail="session not found")
@@ -224,58 +251,38 @@ async def reset_session(session_id: str, request: Request) -> dict:
         if checkpointer is not None and hasattr(checkpointer, "adelete_thread"):
             await checkpointer.adelete_thread(session_id)
     except Exception:
-        # best-effort; don't fail the request if the thread can't be cleared
         pass
     return {"reset": session_id}
 
 
-@router.get("/{session_id}/graph")
-async def get_session_graph(session_id: str) -> dict:
-    """Return the collaboration graph {nodes, links} for reactflow."""
+# --- Mailbox + whiteboard views (per session / per scope) -------------------
+
+@router.get("/{session_id}/mailbox")
+async def get_mailbox(session_id: str, unread_only: bool = False) -> dict:
+    """A participant's inbox (inter-agent messages). Powers the chat/task view."""
     if not await session_store.get(session_id):
         raise HTTPException(status_code=404, detail="session not found")
-    return await session_store.get_graph(session_id)
+    from ..mailbox import mailbox_store
+
+    msgs = await mailbox_store.inbox(session_id, unread_only=unread_only)
+    return {"session_id": session_id, "messages": msgs}
 
 
-async def _drain_single(queue: asyncio.Queue):
-    """Yield SSE frames from a single-agent's queue until the done sentinel."""
-    while True:
-        item = await queue.get()
-        if isinstance(item, dict) and item.get("type") == "__single_done__":
-            yield "data: [DONE]\n\n"
-            return
-        # items are already SSE-formatted strings ("data: {...}\n\n")
-        yield item
-
-
-@router.get("/{session_id}/stream")
-async def stream_session(session_id: str) -> StreamingResponse:
-    """Live SSE stream of a running single-agent (subagent) session.
-
-    Mirrors the team stream: drains the agent's asyncio.Queue of AG-UI frames
-    (produced by single_runner via AGUIBridge). The frames are standard AG-UI,
-    so the frontend's existing ChatStore._handleEvent reducer renders them
-    unchanged. Closes with ``[DONE]`` when the agent finishes.
-    """
+@router.get("/{session_id}/whiteboard")
+async def get_whiteboard(session_id: str) -> dict:
+    """Artefacts in this session's scope + the artefacts it authored."""
     s = await session_store.get(session_id)
     if not s:
         raise HTTPException(status_code=404, detail="session not found")
-    if s.get("kind") != "subagent":
-        raise HTTPException(status_code=400, detail="stream is for subagent sessions only")
+    from ..whiteboard import whiteboard_store
 
-    queue = single_registry.get_queue(session_id)
-    return StreamingResponse(
-        _drain_single(queue),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    scope_id = s.get("scope_id")
+    in_scope = await whiteboard_store.list_in_scope(scope_id) if scope_id else []
+    authored = await whiteboard_store.list_by_author(session_id)
+    return {"session_id": session_id, "scope_id": scope_id, "in_scope": in_scope, "authored": authored}
 
 
-# --- Workdir validation (top-level, not under /sessions) -------------------
+# --- Workdir validation (top-level, not under /sessions) --------------------
 workdir_router = APIRouter(tags=["workdir"])
 
 
@@ -286,14 +293,11 @@ class ValidateWorkdir(BaseModel):
 @workdir_router.post("/workdir/validate")
 async def validate_workdir(body: ValidateWorkdir) -> dict:
     """Check that a workdir path exists and is a directory."""
-    import os
-
     from pathlib import Path
 
     p = Path(body.path).expanduser()
     exists = p.exists()
     is_dir = p.is_dir()
-    # list a few entries to confirm readability + give the UI something to show
     entries: list[str] = []
     if is_dir:
         try:
