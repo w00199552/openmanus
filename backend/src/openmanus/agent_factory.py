@@ -128,6 +128,8 @@ def _build_model() -> BaseChatModel:
     # `reasoning_content` field — ChatGLM._convert_chunk_to_generation_chunk
     # preserves it so the thinking trace streams through.
     # thinking.type=enabled (passed via extra_body) gates reasoning_content on.
+    # x-reasoning-format: reasoning — required by some deployments (e.g. company
+    # ascendvllm) to actually emit reasoning_content in the response.
     return ChatGLM(
         model=settings.model,
         api_key=settings.openai_api_key,
@@ -136,6 +138,7 @@ def _build_model() -> BaseChatModel:
         http_client=sync_http,
         http_async_client=async_http,
         extra_body={"thinking": {"type": "enabled"}},
+        default_headers={"x-reasoning-format": "reasoning"},
     )
 
 
