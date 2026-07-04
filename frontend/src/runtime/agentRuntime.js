@@ -51,6 +51,7 @@ export class AgentRuntime {
 
   constructor() {
     makeAutoObservable(this);
+    if (typeof window !== "undefined") window.__rt = this; // DEBUG
   }
 
   /** Inject the SessionStore (for list unread/preview/status sync). Optional. */
@@ -210,7 +211,7 @@ export class AgentRuntime {
     // sub-agent / team (via the dispatch tool). Refresh the session list so the
     // new child appears without a manual page reload, then auto-switch to it
     // so the user lands on the delegated work.
-    if (sessionId === "default") {
+    if (sessionId === "manus") {
       this._afterDelegation().catch(() => {});
     }
   }

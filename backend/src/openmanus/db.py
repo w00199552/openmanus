@@ -198,21 +198,28 @@ class SessionStore:
             row = await cur.fetchone()
             return _row_to_session(row) if row else None
 
-    async def ensure_default(self) -> dict[str, Any]:
-        """Ensure the permanent default entry session exists; create if absent.
+    async def ensure_manus(self) -> dict[str, Any]:
+        """Ensure the permanent entry session (Manus) exists; create if absent.
 
-        Uses a fixed id ("default") so the entry is a singleton: always present,
+        Uses a fixed id ("manus") so the entry is a singleton: always present,
         never deleted. "New chat" resets its history (clears the checkpointer
-        thread), it does NOT create a second default. Idempotent across restarts.
-        Also refreshes the title on each boot so a brand rename (e.g. "Default
-        Agent" → "Manus") propagates to existing rows without wiping data.
+        thread). Idempotent across restarts. Also migrates the legacy "default"
+        id to "manus" if the old row exists.
         """
-        existing = await self.get("default")
+        # migrate legacy "default" → "manus"
+        legacy = await self.get("default")
+        if legacy and not await self.get("manus"):
+            async with aiosqlite.connect(_db_path()) as db:
+                await db.execute(
+                    "UPDATE sessions SET id = ? WHERE id = ?", ("manus", "default")
+                )
+                await db.commit()
+        existing = await self.get("manus")
         if existing:
             if existing.get("title") != "Manus":
-                return await self.update("default", title="Manus")
+                return await self.update("manus", title="Manus")
             return existing
-        return await self.create(session_id="default", kind="root", title="Manus")
+        return await self.create(session_id="manus", kind="root", title="Manus")
 
     async def ensure_exists(
         self, session_id: str, *, title: str | None = None

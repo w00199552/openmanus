@@ -33,7 +33,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .agent_factory import build_agents
+from .agent_factory import build_entry_agent
 from .api import sessions, streams
 from .api.sessions import workdir_router
 from .config import settings
@@ -48,14 +48,11 @@ logger = logging.getLogger("openmanus")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Build the agent (and its checkpointer) eagerly at startup so the first
-    # request is fast and any config error surfaces now rather than
-    # mid-conversation.
-    await init_db()  # sessions + message_links tables
-    # Seed the singleton default entry session so the user lands on a
-    # ready-to-talk conversation the moment the app boots (idempotent).
-    await session_store.ensure_default()
-    app.state.agent, app.state.teamleader = await build_agents()
+    await init_db()
+    # Seed the singleton Manus entry session (idempotent; migrates legacy "default").
+    await session_store.ensure_manus()
+    # Build the entry agent (manus) eagerly so the first request is fast.
+    app.state.agent = await build_entry_agent()
     logger.info(
         "openmanus ready | model=%s base=%s workdir=%s db=%s",
         settings.model, settings.openai_base_url, settings.workdir, settings.database_url,

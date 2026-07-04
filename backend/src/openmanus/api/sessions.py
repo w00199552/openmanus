@@ -142,7 +142,7 @@ async def get_session(session_id: str, request: Request) -> dict:
                     tool_part_index[tcid] = (len(messages), len(parts) - 1)
                 # reasoning/thinking trace (GLM reasoning_content) — surfaced so
                 # history reload shows the thinking region too.
-                from ..runner import _extract_reasoning
+                from ..engine import _extract_reasoning
                 thinking = "".join(_extract_reasoning(msg))
                 # include the message even if only thinking (no text/tool) so the
                 # user can review prior reasoning on history reload.

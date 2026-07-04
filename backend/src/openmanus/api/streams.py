@@ -35,7 +35,7 @@ from pydantic import BaseModel
 
 from ..channels import channels, drain_single, drain_sessions, fan_in
 from ..db import session_store
-from ..runner import runner
+from ..engine import engine
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +47,13 @@ class PostMessage(BaseModel):
 
 
 async def _resolve_agent(request: Request, session: dict[str, Any]) -> Any:
-    """Pick the agent for this session: per-workdir cached, else app default."""
-    workdir = session.get("workdir")
-    if workdir:
-        from ..agent_factory import get_agent_for_workdir
+    """Pick the agent for this session.
 
-        return await get_agent_for_workdir(workdir)
+    The entry agent (manus) is the cached app default. Dispatched agents are
+    built fresh by the dispatch tool (not via this path — they run inside the
+    dispatch tool's engine.start call). So for user-initiated messages we
+    always use the entry agent.
+    """
     return request.app.state.agent
 
 
@@ -78,9 +79,19 @@ async def post_message(
     # Run the agent in the BACKGROUND. It pushes events onto the session's
     # channel; the client drains them via GET /stream. We don't await the run
     # here — that's the whole point (POST returns fast).
+    #
+    # include_subgraphs: the DEFAULT entry agent is a pure router — its only
+    # tool is `dispatch`, which launches sub-agents as INDEPENDENT background
+    # tasks on their OWN channels. With subgraphs=True, the router's astream
+    # would ALSO mirror those sub-agent chunks (tagged with the router's
+    # session_id) → the router's stream gets contaminated with the coder's
+    # file-tool output ("串台"). subgraphs=False keeps the router's stream to
+    # just its own routing decision.
+    is_router = s.get("kind") == "root"
     asyncio.create_task(
-        runner._run_to_completion(
+        engine._stream(
             agent=agent, session_id=session_id, prompt=body.content, speaker=speaker,
+            include_subgraphs=not is_router,
         )
     )
     return {"ok": True, "session_id": session_id}

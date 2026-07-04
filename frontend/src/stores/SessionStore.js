@@ -19,7 +19,7 @@ function _migrateLsKey(oldKey, newKey) {
  * entry/router agent. "New chat" RESETS its history (deletes the checkpointer
  * thread), it does NOT create a second default.
  */
-export const DEFAULT_ID = "default";
+export const DEFAULT_ID = "manus";
 
 /**
  * SessionStore owns the conversation list + the active session id.

@@ -218,7 +218,7 @@ function extractText(message) {
 function speakerSeed(speaker, session) {
   if (!session) return speaker || "manus-open";
   if (session.kind === "team") return speaker || "team";
-  if (session.id === "default") return "manus-open";
+  if (session.id === "manus") return "manus-open";
   return session.id;
 }
 

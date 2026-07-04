@@ -4,7 +4,6 @@ from .mailbox_tools import (
     make_dispatch_tool,
     make_read_mailbox_tool,
     make_send_message_tool,
-    make_start_team_tool,
 )
 from .whiteboard_tools import (
     make_whiteboard_read_tool,
@@ -13,7 +12,6 @@ from .whiteboard_tools import (
 
 __all__ = [
     "make_dispatch_tool",
-    "make_start_team_tool",
     "make_send_message_tool",
     "make_read_mailbox_tool",
     "make_whiteboard_write_tool",

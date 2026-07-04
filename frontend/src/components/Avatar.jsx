@@ -120,6 +120,6 @@ export function SessionAvatar({ session, size = 36 }) {
   // The default entry ("Manus") uses a dedicated seed so it has a distinct,
   // fixed face (its id is the constant "default", which would otherwise lock
   // it to one arbitrary face forever).
-  const seed = session.id === "default" ? "manus-open" : session.id;
+  const seed = session.id === "manus" ? "manus-open" : session.id;
   return <Avatar seed={seed} size={size} />;
 }

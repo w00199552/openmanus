@@ -32,7 +32,7 @@ export const ChatPane = observer(function ChatPane() {
   /** "New chat" = reset the default entry's history. */
   const handleNewChat = async () => {
     await sessions.resetDefault();
-    runtime.clear("default");
+    runtime.clear("manus");
   };
 
   return (

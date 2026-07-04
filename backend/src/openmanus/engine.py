@@ -1,32 +1,20 @@
-"""SessionRunner: the ONE way to run any agent participant.
+"""StreamEngine — runs an agent and turns its output into a unified SSE event flow.
 
-Replaces single_runner + team_runner + dispatch_task's inline streaming. Every
-agent — the default router, a single specialist, the teamleader, a team-internal
-sub-agent — runs through here, producing the SAME unified event schema on its
-OWN channel. There is no longer a parallel hand-written delta path (which was
-the root cause of the team-stream bug: ``subgraphs=True`` double-emits tokens
-that the hand path didn't de-dup, and a separate ``aget_state`` final-text read
-diverged from the streamed deltas).
+This is the execution layer between an agent (a deepagents/LangGraph graph) and
+the live SSE channel the frontend drains. It does NOT decide who gets delegated
+to (that's the dispatch tool's job) — it only knows how to RUN a given agent and
+translate its langgraph stream chunks into the unified event schema.
 
-KEY INVARIANT — one converter, with de-dup: ``convert_chunk`` carries over
-``_StreamState`` from the old AGUIBridge. It tracks the currently-open
-assistant message id, the open tool-call ids, and the open step names, so:
-  * a token is emitted once even when ``subgraphs=True`` mirrors it across
-    graph layers;
-  * message/step boundaries close exactly once;
-  * the streamed output IS the final output (no second ``aget_state`` read).
+Two entry points:
+  * ``run``    — run an agent the user is directly talking to (manus / teamleader
+                 on a team session). Streams to the session's channel.
+  * ``start``  — run a DISPATCHED agent (a coder/researcher kicked off by the
+                 dispatch tool). Same streaming, PLUS records the outcome to the
+                 whiteboard + notifies the caller via mailbox when done.
 
-MODES:
-  * ``async``  — fire-and-forget (asyncio.create_task); the caller returns
-                 immediately. Used by the entry default agent.
-  * ``sync``   — block until the run completes, return the final assistant
-                 text. Used by the teamleader for serial orchestration where
-                 the next decision needs this sub-agent's result.
-
-dispatch() is the single delegation primitive. Synchronous vs asynchronous is
-just "do we await the run or not" — same code path, same channel, same events.
-The sub-agent writes its outcome to the whiteboard and sends the parent a
-short ``result`` mailbox message carrying the whiteboard ref (no content copy).
+The chunk→event conversion (``convert_chunk``) carries the ``_StreamState``
+de-dup logic ported from the old AGUIBridge — this is what keeps
+``subgraphs=True`` safe (the team-stream fix).
 """
 
 from __future__ import annotations
@@ -52,13 +40,6 @@ def _new_id() -> str:
 
 
 def _extract_text(content: Any) -> list[str]:
-    """Pull text deltas out of a streamed message ``content`` field.
-
-    Handles both shapes produced by different providers:
-      * ``str``  — OpenAI-style streaming (single-element list)
-      * ``list`` — content blocks, e.g. ``[{"text": "Hi", "type": "text"}]``
-        (Anthropic / GLM); collect each text block's text in order.
-    """
     if content is None:
         return []
     if isinstance(content, str):
@@ -77,16 +58,7 @@ def _extract_text(content: Any) -> list[str]:
 
 
 def _extract_reasoning(msg: Any) -> list[str]:
-    """Pull thinking/reasoning deltas out of a streamed AIMessageChunk.
-
-    GLM-5.x exposes its chain-of-thought as ``reasoning_content`` on the native
-    OpenAI endpoint (gated behind ``thinking.type=enabled``). LangChain's
-    OpenAI client surfaces non-standard delta fields in
-    ``additional_kwargs``, so we read it there. We also tolerate the Anthropic
-    shape (a ``{"type":"thinking", "thinking": ...}`` content block) in case
-    someone swaps providers. Returns the delta strings in order.
-    """
-    # 1. GLM native (OpenAI protocol): reasoning_content lives in additional_kwargs
+    """Pull thinking/reasoning deltas out of a streamed AIMessageChunk."""
     ak = getattr(msg, "additional_kwargs", None) or {}
     rc = ak.get("reasoning_content")
     if isinstance(rc, str) and rc:
@@ -94,8 +66,6 @@ def _extract_reasoning(msg: Any) -> list[str]:
     if isinstance(rc, list):
         out = [p.get("text", "") if isinstance(p, dict) else str(p) for p in rc]
         return [s for s in out if s]
-
-    # 2. Anthropic shape: thinking-type content blocks
     content = getattr(msg, "content", None)
     if isinstance(content, list):
         out: list[str] = []
@@ -109,38 +79,14 @@ def _extract_reasoning(msg: Any) -> list[str]:
 
 
 class _StreamState:
-    """Tracks ids emitted so far so boundaries close exactly once.
-
-    Ported from the old AGUIBridge — this de-dup is what makes
-    ``subgraphs=True`` safe (the team-stream bug fix).
-    """
-
     def __init__(self) -> None:
         self.assistant_message_id: str | None = None
         self.message_open: bool = False
         self.open_tool_calls: set[str] = set()
         self.open_steps: set[str] = set()
 
-    def reset(self) -> None:
-        self.assistant_message_id = None
-        self.message_open = False
-        self.open_tool_calls.clear()
-        self.open_steps.clear()
 
-
-def convert_chunk(
-    chunk: dict[str, Any],
-    st: _StreamState,
-    *,
-    session_id: str,
-    speaker: str,
-) -> list[str]:
-    """Return the unified-event SSE frames for one LangGraph stream chunk.
-
-    Pure/synchronous: constructs frame strings only, never awaits. ``session_id``
-    and ``speaker`` are injected into every event so a fanned-in stream stays
-    attributable.
-    """
+def convert_chunk(chunk, st, *, session_id, speaker):
     from langchain_core.messages import AIMessageChunk, ToolMessage
 
     ctype = chunk.get("type")
@@ -165,12 +111,11 @@ def convert_chunk(
     msg, _meta = data
 
     if isinstance(msg, AIMessageChunk):
-        # streaming tool-call fragments
         for tc in msg.tool_call_chunks or []:
             name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
             args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", None)
             tcid = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
-            if name:  # first fragment carries the tool name → start
+            if name:
                 tcid = tcid or _new_id()
                 st.open_tool_calls.add(tcid)
                 if st.assistant_message_id is None:
@@ -186,9 +131,6 @@ def convert_chunk(
                     session_id=session_id, call_id=tcid, args_json=str(args),
                 )))
 
-        # reasoning / thinking trace (GLM reasoning_content, before the answer).
-        # Ensure a message id exists; thinking and answer share one message id
-        # but render as separate regions in the frontend.
         for thought in _extract_reasoning(msg):
             if not thought:
                 continue
@@ -199,7 +141,6 @@ def convert_chunk(
                 speaker=speaker, delta=thought,
             )))
 
-        # plain assistant text
         for text in _extract_text(msg.content):
             if not text:
                 continue
@@ -234,8 +175,7 @@ def convert_chunk(
     return []
 
 
-def _close_open(st: _StreamState, *, session_id: str, speaker: str) -> list[str]:
-    """Close any still-open message / tool-call boundaries on run end."""
+def _close_open(st, *, session_id, speaker):
     frames: list[str] = []
     if st.message_open:
         frames.append(E.frame(E.ev_message_end(
@@ -249,14 +189,7 @@ def _close_open(st: _StreamState, *, session_id: str, speaker: str) -> list[str]
     return frames
 
 
-async def _final_text(agent: Any, config: dict) -> str:
-    """Best-effort final assistant text from the populated checkpointer state.
-
-    Used by sync dispatch so the teamleader receives a concrete answer string
-    (mirrors the old dispatch_task behaviour). This is a RESULT read for the
-    caller only — it is NOT re-streamed; the live stream already showed
-    everything.
-    """
+async def _final_text(agent, config):
     try:
         snapshot = await agent.aget_state(config)
         for msg in reversed(getattr(snapshot, "values", {}).get("messages", [])):
@@ -273,8 +206,16 @@ async def _final_text(agent: Any, config: dict) -> str:
     return "(no output)"
 
 
-class SessionRunner:
-    """The single entry point for running any agent on its session."""
+class StreamEngine:
+    """Run agents and stream their output as unified events."""
+
+    def __init__(self) -> None:
+        # Pending dispatched-agent starts, deferred until the current top-level
+        # stream finishes. This prevents concurrent astreams on the same event
+        # loop (which cross-contaminate each other's chunks). Keyed by the
+        # CALLER's session id — when that caller's _stream ends, we launch its
+        # pending dispatched agents.
+        self._pending: dict[str, list] = {}
 
     async def run(
         self,
@@ -284,27 +225,80 @@ class SessionRunner:
         prompt: str,
         speaker: str,
         mode: str = "async",
+        include_subgraphs: bool = True,
     ) -> str | None:
-        """Run an agent turn on its session, streaming events to its channel.
+        """Run an agent the user is directly talking to.
 
-        ``mode="async"`` schedules the run as a background task and returns
-        immediately (returns None). ``mode="sync"`` awaits completion and
-        returns the final assistant text (for serial orchestration).
+        ``mode="async"`` schedules a background task and returns immediately.
+        ``mode="sync"`` awaits completion and returns the final text.
         """
         if mode == "async":
             asyncio.create_task(
-                self._run_to_completion(
-                    agent=agent, session_id=session_id, prompt=prompt, speaker=speaker,
+                self._stream(
+                    agent=agent, session_id=session_id, prompt=prompt,
+                    speaker=speaker, include_subgraphs=include_subgraphs,
                 )
             )
             return None
-        # sync
-        return await self._run_to_completion(
-            agent=agent, session_id=session_id, prompt=prompt, speaker=speaker,
+        return await self._stream(
+            agent=agent, session_id=session_id, prompt=prompt,
+            speaker=speaker, include_subgraphs=include_subgraphs,
         )
 
-    async def _run_to_completion(
-        self, *, agent: Any, session_id: str, prompt: str, speaker: str
+    async def start(
+        self,
+        *,
+        agent: Any,
+        caller_session_id: str,
+        target_agent: str,
+        task: str,
+        scope_id: str | None,
+        target_session_id: str,
+        mode: str = "async",
+    ) -> str | None:
+        """Run a DISPATCHED agent: stream it + record outcome for the caller.
+
+        ``caller_session_id`` is who dispatched this task (gets notified on
+        completion). ``target_session_id`` is this agent's own session.
+        """
+        from .tools.roles import role_prompt  # lazy: avoid import cycle
+
+        await mailbox_store.send(
+            to_session_id=target_session_id,
+            from_session_id=caller_session_id,
+            kind="dispatch",
+            content=task,
+        )
+
+        prompt = f"{role_prompt(target_agent)}\n\nTask:\n{task}"
+
+        if mode == "sync":
+            answer = await self._stream(
+                agent=agent, session_id=target_session_id, prompt=prompt,
+                speaker=target_agent,
+            )
+            await self._record_result(
+                scope_id=scope_id, target_session_id=target_session_id,
+                caller_session_id=caller_session_id, target_agent=target_agent,
+                answer=answer or "",
+            )
+            return answer
+
+        # async: DEFER the start until the caller's own stream finishes.
+        # Running it concurrently (asyncio.create_task) caused cross-talk:
+        # two astreams on the same event loop contaminated each other's chunks.
+        # By deferring, the dispatched agent runs only after the caller's
+        # astream has fully completed — no concurrency, no contamination.
+        self._pending.setdefault(caller_session_id, []).append({
+            "agent": agent, "target_session_id": target_session_id,
+            "prompt": prompt, "speaker": target_agent,
+            "scope_id": scope_id, "caller_session_id": caller_session_id,
+        })
+        return target_session_id
+
+    async def _stream(
+        self, *, agent: Any, session_id: str, prompt: str, speaker: str,
+        include_subgraphs: bool = True,
     ) -> str:
         queue = channels.get_queue(session_id)
         st = _StreamState()
@@ -315,7 +309,7 @@ class SessionRunner:
                 {"messages": [HumanMessage(content=prompt)]},
                 config=config,
                 stream_mode=["messages", "updates"],
-                subgraphs=True,
+                subgraphs=include_subgraphs,
                 version="v2",
             ):
                 for f in convert_chunk(chunk, st, session_id=session_id, speaker=speaker):
@@ -325,7 +319,7 @@ class SessionRunner:
             await session_store.update(session_id, status="active", touch=True)
             await queue.put(E.frame(E.ev_done(session_id=session_id)))
         except Exception as exc:  # noqa: BLE001
-            logger.exception("runner failed for session %s", session_id)
+            logger.exception("engine failed for session %s", session_id)
             for f in _close_open(st, session_id=session_id, speaker=speaker):
                 await queue.put(f)
             await queue.put(E.frame(E.ev_error(session_id=session_id, message=str(exc))))
@@ -334,94 +328,50 @@ class SessionRunner:
         finally:
             await queue.put(E.done_sentinel(session_id))
             channels.mark_finished(session_id)
+            # Launch any dispatched agents that were deferred during this stream.
+            # They run AFTER this stream finishes — no concurrent astreams, no
+            # cross-talk. Each runs as its own background task on its own session.
+            pending = self._pending.pop(session_id, [])
+            for p in pending:
+                asyncio.create_task(self._start_and_record(
+                    agent=p["agent"], target_session_id=p["target_session_id"],
+                    prompt=p["prompt"], speaker=p["speaker"],
+                    scope_id=p["scope_id"], caller_session_id=p["caller_session_id"],
+                ))
         return await _final_text(agent, config)
 
-    async def dispatch(
-        self,
-        *,
-        agent: Any,
-        from_session_id: str,
-        target_agent: str,
-        task: str,
-        scope_id: str | None,
-        child_session_id: str,
-        mode: str = "async",
-    ) -> str | None:
-        """The single delegation primitive.
-
-        Creates (or reuses) the child session, records a dispatch mailbox
-        message, runs the sub-agent under its role prompt, then on completion
-        writes its outcome to the whiteboard and notifies the parent with a
-        short result mailbox message (whiteboard ref only — no content copy).
-
-        ``mode="sync"`` awaits the run and returns the sub-agent's final text
-        (for serial teamleader orchestration). ``mode="async"`` returns the
-        child session id immediately.
-        """
-        from .tools.roles import role_prompt  # lazy: avoid import cycle
-
-        # Record the delegation as a mailbox message (durable + live).
-        await mailbox_store.send(
-            to_session_id=child_session_id,
-            from_session_id=from_session_id,
-            kind="dispatch",
-            content=task,
-        )
-
-        prompt = f"{role_prompt(target_agent)}\n\nTask:\n{task}"
-
-        if mode == "sync":
-            answer = await self._run_to_completion(
-                agent=agent, session_id=child_session_id, prompt=prompt, speaker=target_agent,
-            )
-            await self._record_result(
-                scope_id=scope_id, child_session_id=child_session_id,
-                from_session_id=from_session_id, target_agent=target_agent, answer=answer or "",
-            )
-            return answer
-
-        # async: fire and forget, record result when it lands.
-        asyncio.create_task(self._run_and_record(
-            agent=agent, child_session_id=child_session_id, prompt=prompt,
-            speaker=target_agent, scope_id=scope_id, from_session_id=from_session_id,
-        ))
-        return child_session_id
-
-    async def _run_and_record(
-        self, *, agent: Any, child_session_id: str, prompt: str, speaker: str,
-        scope_id: str | None, from_session_id: str,
-    ) -> None:
-        answer = await self._run_to_completion(
-            agent=agent, session_id=child_session_id, prompt=prompt, speaker=speaker,
+    async def _start_and_record(
+        self, *, agent, target_session_id, prompt, speaker, scope_id, caller_session_id,
+    ):
+        answer = await self._stream(
+            agent=agent, session_id=target_session_id, prompt=prompt, speaker=speaker,
         )
         await self._record_result(
-            scope_id=scope_id, child_session_id=child_session_id,
-            from_session_id=from_session_id, target_agent=speaker, answer=answer or "",
+            scope_id=scope_id, target_session_id=target_session_id,
+            caller_session_id=caller_session_id, target_agent=speaker, answer=answer or "",
         )
 
     async def _record_result(
-        self, *, scope_id: str | None, child_session_id: str,
-        from_session_id: str, target_agent: str, answer: str,
-    ) -> None:
-        """Persist the outcome to the whiteboard + notify the parent by mailbox."""
+        self, *, scope_id, target_session_id, caller_session_id, target_agent, answer,
+    ):
         if not scope_id:
-            return  # top-level single dispatch has no shared space to write to
+            return
         try:
             art = await whiteboard_store.create(
-                scope_id=scope_id, session_id=child_session_id,
+                scope_id=scope_id, session_id=target_session_id,
                 kind="result", title=f"{target_agent} result",
                 content=answer[:2000] or "(no output)",
             )
             await mailbox_store.send(
-                to_session_id=from_session_id,
-                from_session_id=child_session_id,
+                to_session_id=caller_session_id,
+                from_session_id=target_session_id,
                 kind="result",
                 content=f"{target_agent} finished",
                 whiteboard_ref=art["id"],
             )
         except Exception:  # noqa: BLE001
-            logger.exception("failed recording result for %s", child_session_id)
+            logger.exception("failed recording result for %s", target_session_id)
 
 
 # Module-level singleton.
-runner = SessionRunner()
+engine = StreamEngine()

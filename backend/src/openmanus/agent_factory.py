@@ -1,14 +1,13 @@
-"""Build the two agents: default (entry) + teamleader (team coordinator).
+"""Agent factory — build fresh, independent agent instances by role.
 
-Unified model: both agents share one graph (the teamleader's, which keeps the
-filesystem tools the sub-agents need). The default agent's own graph has those
-tools stripped by ToolGuard, so sub-agents MUST run on the teamleader's graph.
+Every agent (manus / teamleader / coder / researcher) is created the SAME way:
+``build_agent(role, workdir)`` returns a brand-new CompiledStateGraph with its
+own state. No agent instance is ever reused across runs — this is the cross-talk
+fix (previously sub-agents reused the teamleader's single graph, and concurrent
+astreams on the same object contaminated each other).
 
-The dispatch primitive is now ONE tool (`dispatch`) with a mode parameter:
-  * default agent    → dispatch(..., mode="async")  [fire-and-forget]
-  * teamleader       → dispatch(..., mode="sync"|"async") [chooses per step]
-Plus `dispatch_to_team` (default → background teamleader), and mailbox +
-whiteboard tools so agents can talk to each other and share artefacts.
+The checkpointer is SHARED (one DB) but each run uses its own thread_id
+(= its session id), so histories stay isolated at the storage layer.
 """
 
 from __future__ import annotations
@@ -29,93 +28,29 @@ from .tools.mailbox_tools import (
     make_dispatch_tool,
     make_read_mailbox_tool,
     make_send_message_tool,
-    make_start_team_tool,
 )
+from .tools.roles import AGENT_CONFIGS
 from .tools.whiteboard_tools import (
     make_whiteboard_read_tool,
     make_whiteboard_write_tool,
 )
 
-# Tools the DEFAULT entry agent must NOT see: it is a PURE ROUTER. It does no
-# file work at all — not even read-only. Any task that needs to look at files
-# is delegated to a specialist (researcher/coder). `task` is deepagents' built-in
-# subagent-dispatch tool (would bypass our dispatch routing) — stripped too.
-# Guarded at BOTH the model-request and tool-execution layers.
-DEFAULT_EXCLUDED_TOOLS = frozenset(
-    {
-        "write_file", "edit_file", "execute", "write_todos", "task",
-        # read-only tools — also delegated, so the router can't "just peek"
-        "read_file", "list_directory", "ls", "glob", "grep",
-    }
+# File tools that the pure-router (manus) must NOT have. Stripped via ToolGuard.
+_FILE_TOOLS = frozenset(
+    {"read_file", "write_file", "edit_file", "execute", "write_todos",
+     "list_directory", "ls", "glob", "grep", "task"}
 )
 
-# The teamleader also must not use deepagents' built-in `task` tool — its only
-# delegation path is our `dispatch` (which we track as sessions). File tools
-# stay (the teamleader may inspect files), but `task` is blocked.
-TEAMLEADER_EXCLUDED_TOOLS = frozenset({"task"})
-
-DEFAULT_PROMPT = f"""{settings.system_prompt}
-
-You are the DEFAULT entry agent — a PURE ROUTER. You have NO tools to read or
-modify files. Your only job is to decide, in ONE short sentence, which lane a
-request belongs to, then hand it off:
-
-1. CASUAL CHAT / pure-knowledge questions (greetings, explaining a concept,
-   "what is X"): answer directly from your own knowledge. You CANNOT look at
-   files — if the user asks about their project/files, that's lane 2.
-
-2. ANY task that involves the user's files/code ("list files", "read X",
-   "implement Y", "fix Z", "investigate the codebase"): call `dispatch` with
-   target_agent="researcher" (read-only investigation) or "coder" (changes).
-   mode defaults to async — the task runs in the background and the user
-   watches it.
-
-3. ANYTHING multi-step / needing coordination ("use a team", "research then
-   build", ambiguous scope): call `dispatch_to_team` and pass the user's request
-   VERBATIM as the task. Do NOT decompose it, do NOT assign roles, do NOT
-   describe phases — deciding how to split the work and whom to involve is the
-   team leader's job, not yours.
-
-CRITICAL: When you choose lane 2 or 3, your reply must be ONE line stating you
-handed it off (e.g. "Delegating to a coder." / "Starting a team."). Do NOT
-restate the task, do NOT outline steps, do NOT mention what each member will do.
-"""
-
-
-TEAMLEADER_PROMPT = """You are a TEAM LEADER coordinating specialist sub-agents
-to complete a task handed to you.
-
-Your sub-agents (via the `dispatch` tool):
-- "researcher": read-only investigation (list/read/grep files). Use to explore
-  the codebase, answer "what's there" questions.
-- "coder": can read/write/edit/run files. Use to implement changes.
-
-How to work:
-1. Break the task into subtasks.
-2. Delegate each subtask with `dispatch`, giving a CLEAR, DETAILED task (the
-   sub-agent starts with no context — include file paths, goals, constraints).
-   Choose the mode deliberately:
-   - mode="sync" when your NEXT step needs this sub-agent's result (serial
-     orchestration: research, then build on the findings).
-   - mode="async" when sub-tasks are independent and can run together (dispatch
-     several, then collect results from your mailbox / the whiteboard).
-3. Read your `read_mailbox` for results from async dispatches; use
-   `whiteboard_read` to fetch a result's full content by its whiteboard ref.
-4. When a sub-agent's result is large, encourage them to write it to the
-   whiteboard (whiteboard_write) so it doesn't get lost passing through context.
-5. When the whole task is done, write a concise final summary for the user.
-
-Prefer delegating over doing the work yourself.
-"""
+# Per-workdir cache for the ENTRY agent only (cheap reuse — it's stateless
+# across turns thanks to the checkpointer). Dispatched agents are built fresh
+# every time and NOT cached.
+_entry_agent_cache: dict[str, CompiledStateGraph] = {}
+_default_checkpointer: Any = None
+_default_model: BaseChatModel | None = None
 
 
 def _build_model() -> BaseChatModel:
     provider = settings.model_provider.lower()
-    # For self-signed 公司内网证书, set SSL_VERIFY=false in .env. We inject a
-    # verify-disabled httpx client into ChatOpenAI (the OpenAI-compatible path
-    # used by company/internal models). ChatAnthropic doesn't accept a custom
-    # http client, so for it we rely on httpx's env (CURL_CA_BUNDLE / etc.) or
-    # the default verify behaviour.
     import httpx
 
     sync_http = httpx.Client(verify=settings.ssl_verify)
@@ -129,13 +64,6 @@ def _build_model() -> BaseChatModel:
             streaming=True,
             max_tokens=8192,
         )
-    # GLM via BigModel's native OpenAI-compatible endpoint. We use ChatGLM (a
-    # ChatOpenAI subclass) because plain ChatOpenAI discards GLM's non-standard
-    # `reasoning_content` field — ChatGLM._convert_chunk_to_generation_chunk
-    # preserves it so the thinking trace streams through.
-    # thinking.type=enabled (passed via extra_body) gates reasoning_content on.
-    # x-reasoning-format: reasoning — required by some deployments (e.g. company
-    # ascendvllm) to actually emit reasoning_content in the response.
     return ChatGLM(
         model=settings.model,
         api_key=settings.openai_api_key,
@@ -149,127 +77,99 @@ def _build_model() -> BaseChatModel:
 
 
 def _build_backend(workdir: str) -> LocalShellBackend:
-    return LocalShellBackend(
-        root_dir=workdir,
-        virtual_mode=False,
-        inherit_env=True,
-    )
+    return LocalShellBackend(root_dir=workdir, virtual_mode=False, inherit_env=True)
 
 
 def _resolve_session_id(config: Any) -> str:
-    """Pull the calling session id out of a runnable config (best-effort)."""
     try:
-        return (
-            ((config or {}).get("configurable") or {}).get("thread_id") or "unknown"
-        )
+        return ((config or {}).get("configurable") or {}).get("thread_id") or "unknown"
     except Exception:  # noqa: BLE001
         return "unknown"
 
 
 def _resolve_scope_id(config: Any) -> str | None:
-    """Best-effort scope id from config (sync, may return None)."""
-    # The teamleader's session id IS the scope id for its team.
     sid = _resolve_session_id(config)
     return sid if sid != "unknown" else None
 
 
-async def _build_agents_for_workdir(
-    workdir: str, checkpointer: Any, model: BaseChatModel
-) -> tuple[CompiledStateGraph, CompiledStateGraph]:
-    """Build the teamleader + default agents bound to a workdir.
-
-    Returns (default_agent, teamleader_agent). Both are wired to dispatch onto
-    the teamleader's graph (which retains the filesystem tools).
-    """
-    backend = _build_backend(workdir)
-
-    # --- teamleader (coordinates sub-agents via dispatch) --------------------
-    team_agent_ref: dict = {}
-    teamleader_dispatch = make_dispatch_tool(
-        agent_ref=team_agent_ref, workdir=workdir, default_mode="sync",
-    )
-    teamleader = create_deep_agent(
-        model=model,
-        system_prompt=TEAMLEADER_PROMPT,
-        tools=[
-            teamleader_dispatch,
-            make_send_message_tool(),
-            make_read_mailbox_tool(),
-            make_whiteboard_write_tool(
+def _build_tools(tool_names: list[str], workdir: str, role: str = "") -> list:
+    """Instantiate the extra tools listed in an agent's config."""
+    tools: list = []
+    for name in tool_names:
+        if name == "dispatch":
+            # manus dispatches async (fire-and-forget router); teamleader uses
+            # sync (needs results to orchestrate the next step).
+            dm = "async" if role == "manus" else "sync"
+            tools.append(make_dispatch_tool(workdir=workdir, default_mode=dm))
+        elif name == "send_message":
+            tools.append(make_send_message_tool())
+        elif name == "read_mailbox":
+            tools.append(make_read_mailbox_tool())
+        elif name == "whiteboard_write":
+            tools.append(make_whiteboard_write_tool(
                 session_id_fn=_resolve_session_id, scope_id_fn=_resolve_scope_id,
-            ),
-            make_whiteboard_read_tool(scope_id_fn=_resolve_scope_id),
-        ],
-        backend=backend,
-        checkpointer=checkpointer,
-        middleware=[ToolGuardMiddleware(excluded=TEAMLEADER_EXCLUDED_TOOLS)],
-        name="openmanus-teamleader",
-    )
-    team_agent_ref["agent"] = teamleader
-
-    # --- default (entry router) --------------------------------------------
-    # dispatch_single → dispatch on the teamleader's graph (async default).
-    # dispatch_to_team → launch a background teamleader on a new team session.
-    default_dispatch = make_dispatch_tool(
-        agent_ref=team_agent_ref, workdir=workdir, default_mode="async",
-    )
-    dispatch_to_team = make_start_team_tool(
-        team_agent_ref=teamleader, workdir=workdir,
-    )
-    default_agent = create_deep_agent(
-        model=model,
-        system_prompt=DEFAULT_PROMPT,
-        tools=[default_dispatch, dispatch_to_team],
-        backend=backend,
-        checkpointer=checkpointer,
-        # Strip write/execute tools so the router physically cannot do the
-        # specialist work itself — it must delegate. (Guarded at both the
-        # model-request and tool-execution layers.)
-        middleware=[ToolGuardMiddleware(excluded=DEFAULT_EXCLUDED_TOOLS)],
-        name="openmanus-default",
-    )
-    return default_agent, teamleader
+            ))
+        elif name == "whiteboard_read":
+            tools.append(make_whiteboard_read_tool(scope_id_fn=_resolve_scope_id))
+    return tools
 
 
-# Per-workdir agent cache: workdir -> (default_agent, teamleader_agent).
-_agent_cache: dict[str, tuple[CompiledStateGraph, CompiledStateGraph]] = {}
-_default_checkpointer: Any = None
-_default_model: BaseChatModel | None = None
+async def build_agent(role: str, workdir: str) -> CompiledStateGraph:
+    """Create a FRESH, independent agent for the given role.
 
-
-async def get_agent_for_workdir(workdir: str) -> CompiledStateGraph:
-    """Return the default agent bound to ``workdir`` (cached, built on demand)."""
-    global _default_checkpointer, _default_model
-    if _default_checkpointer is None:
-        _default_checkpointer = await get_checkpointer()
+    Each call returns a new CompiledStateGraph with its OWN checkpointer
+    instance — never reused, never shared. Sharing a checkpointer across
+    concurrent astreams was the cross-talk root cause: langgraph's
+    AsyncSqliteSaver is not safe for concurrent use on the same object, so a
+    dispatched agent's chunks bled into the dispatcher's stream. A fresh
+    checkpointer per agent (all pointing at the same DB file, isolated by
+    thread_id) eliminates that.
+    """
+    global _default_model
     if _default_model is None:
         _default_model = _build_model()
 
-    if workdir not in _agent_cache:
-        _agent_cache[workdir] = await _build_agents_for_workdir(
-            workdir, _default_checkpointer, _default_model
-        )
-    return _agent_cache[workdir][0]  # the default agent
+    # Each agent gets its OWN checkpointer instance (own aiosqlite connection).
+    # They all read/write the same DB file, isolated by thread_id. This is the
+    # concurrency fix: no shared checkpointer object → no cross-talk.
+    own_checkpointer = await get_checkpointer()
 
-
-async def get_teamleader_for_workdir(workdir: str) -> CompiledStateGraph:
-    """Return the teamleader agent bound to ``workdir`` (cached)."""
-    if workdir not in _agent_cache:
-        await get_agent_for_workdir(workdir)
-    return _agent_cache[workdir][1]
-
-
-async def build_agents() -> tuple[CompiledStateGraph, CompiledStateGraph]:
-    """Build both agents at startup (for the configured default workdir).
-
-    Returns (default_agent, teamleader_agent). Also warms the per-workdir cache.
-    """
-    checkpointer = await get_checkpointer()
-    model = _build_model()
-    default_agent, teamleader = await _build_agents_for_workdir(
-        settings.workdir, checkpointer, model
+    cfg = AGENT_CONFIGS[role]
+    backend = _build_backend(workdir)
+    tools = _build_tools(cfg.get("tools", []), workdir, role=role)
+    # manus strips file tools (pure router); others keep them all.
+    excluded = _FILE_TOOLS if cfg.get("strip_file_tools") else frozenset({"task"})
+    return create_deep_agent(
+        model=_default_model,
+        system_prompt=cfg["prompt"],
+        tools=tools,
+        backend=backend,
+        checkpointer=own_checkpointer,
+        middleware=[ToolGuardMiddleware(excluded=excluded)],
+        name=f"openmanus-{role}",
     )
-    _agent_cache[settings.workdir] = (default_agent, teamleader)
-    _default_checkpointer = checkpointer
-    _default_model = model
-    return default_agent, teamleader
+
+
+async def build_entry_agent(workdir: str = None) -> CompiledStateGraph:
+    """Build (and cache) the entry agent for a workdir.
+
+    The entry agent (manus) is the one the user talks to directly. Cached
+    per-workdir since it's stateless across turns (its own checkpointer holds
+    history). Dispatched agents are NOT cached — built fresh each time with
+    their own checkpointer.
+    """
+    wd = workdir or settings.workdir
+    if wd not in _entry_agent_cache:
+        global _default_model
+        if _default_model is None:
+            _default_model = _build_model()
+        _entry_agent_cache[wd] = await build_agent("manus", wd)
+    return _entry_agent_cache[wd]
+
+
+def get_entry_role() -> str:
+    """The role name of the entry agent (configurable later)."""
+    for role, cfg in AGENT_CONFIGS.items():
+        if cfg.get("is_entry"):
+            return role
+    return "manus"
