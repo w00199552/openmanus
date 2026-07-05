@@ -283,7 +283,7 @@ class StreamEngine:
         if mode == "sync":
             answer = await self._stream(
                 agent=agent, session_id=target_session_id, prompt=prompt,
-                speaker=target_agent,
+                speaker=target_agent, include_subgraphs=False,
             )
             await self._record_result(
                 scope_id=scope_id, target_session_id=target_session_id,

@@ -105,7 +105,7 @@ def make_dispatch_tool(*, workdir: str, default_mode: str = "sync") -> BaseTool:
             team_agent = await build_agent("teamleader", workdir)
             await engine.run(
                 agent=team_agent, session_id=team_id, prompt=task,
-                speaker="teamleader", mode="async",
+                speaker="teamleader", mode="async", include_subgraphs=False,
             )
             await mailbox_store.send(
                 to_session_id=team_id, from_session_id=caller_session_id,
