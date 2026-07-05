@@ -74,6 +74,7 @@ def _build_model() -> BaseChatModel:
         http_async_client=async_http,
         extra_body={"thinking": {"type": "enabled"}},
         default_headers={"x-reasoning-format": "reasoning"},
+        
     )
 
 
