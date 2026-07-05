@@ -82,16 +82,12 @@ async def post_message(
     #
     # include_subgraphs: the DEFAULT entry agent is a pure router — its only
     # tool is `dispatch`, which launches sub-agents as INDEPENDENT background
-    # tasks on their OWN channels. With subgraphs=True, the router's astream
-    # would ALSO mirror those sub-agent chunks (tagged with the router's
-    # session_id) → the router's stream gets contaminated with the coder's
-    # file-tool output ("串台"). subgraphs=False keeps the router's stream to
-    # just its own routing decision.
-    is_router = s.get("kind") == "root"
+    # Run the agent in the BACKGROUND. All agents use subgraphs=False (every
+    # agent is independent — no subgraphs). Dispatched agents run deferred
+    # (after this agent's astream finishes) so there's no concurrent astream.
     asyncio.create_task(
         engine._stream(
             agent=agent, session_id=session_id, prompt=body.content, speaker=speaker,
-            include_subgraphs=not is_router,
         )
     )
     return {"ok": True, "session_id": session_id}
