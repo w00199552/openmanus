@@ -195,12 +195,14 @@ export class AgentRuntime {
         this.error = event.message || "agent error";
       }
       // In team view, a new member agent may appear mid-run (teamleader
-      // dispatches coder/researcher). Refresh the member cache so the merged
-      // view picks it up. (Not in the computed — that would loop.)
-      if (this.activeScopeId && sid && event.kind === "message_start") {
+      // dispatches coder/researcher). Add its session_id directly to the member
+      // cache so the merged view picks it up. We DON'T call _refreshScopeMembers
+      // (which reads SessionStore.sessions) because that list may not have been
+      // reloaded yet — the event's session_id is authoritative.
+      if (this.activeScopeId && sid && sid !== this.activeScopeId) {
         const members = _scopeMembersCache[this.activeScopeId] || [];
         if (!members.includes(sid)) {
-          this._refreshScopeMembers(this.activeScopeId);
+          _scopeMembersCache[this.activeScopeId] = [...members, sid];
         }
       }
     });
