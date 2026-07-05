@@ -47,32 +47,25 @@ class DispatchInput(BaseModel):
             "the agent receives. Include goals, file paths, constraints."
         )
     )
-    mode: str = Field(
-        default="",
-        description=(
-            "'async': return immediately with the task id; watch in the list. "
-            "'sync' (default): wait for the result (use when your next step "
-            "needs it)."
-        ),
-    )
 
 
-def make_dispatch_tool(*, workdir: str, default_mode: str = "sync") -> BaseTool:
+def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
     """Build the unified dispatch tool.
 
     Each dispatch creates a FRESH agent (build_agent) for the target role —
-    independent graph, isolated from the caller. For teamleader, a team session
-    (scope) is created and the teamleader runs on it async.
+    independent graph, isolated from the caller. The dispatched agent runs
+    AFTER the caller's astream finishes (deferred) — never concurrently.
+    Results come back via mailbox (the caller reads them on its next turn).
     """
 
     @tool("dispatch", args_schema=DispatchInput)
     async def dispatch(
         target_agent: str,
         task: str,
-        mode: str = "",
         config: Annotated[RunnableConfig, InjectedToolArg] = None,  # type: ignore[assignment]
     ) -> str:
-        """Delegate a task to another agent.
+        """Delegate a task to another agent. Returns immediately; the agent
+        runs in the background. Check read_mailbox later for the result.
 
         - target_agent='coder'/'researcher': a single specialist runs the task.
         - target_agent='teamleader': a team is created; the leader coordinates
@@ -83,7 +76,6 @@ def make_dispatch_tool(*, workdir: str, default_mode: str = "sync") -> BaseTool:
         from ..engine import engine  # lazy: avoid import cycle
         from ..agent_factory import build_agent
 
-        run_mode = mode or default_mode
         caller_session_id = _config_session_id(config)
         caller_row = await session_store.get(caller_session_id)
         caller_scope = (caller_row or {}).get("scope_id")
@@ -105,7 +97,7 @@ def make_dispatch_tool(*, workdir: str, default_mode: str = "sync") -> BaseTool:
             team_agent = await build_agent("teamleader", workdir)
             await engine.run(
                 agent=team_agent, session_id=team_id, prompt=task,
-                speaker="teamleader", mode="async", include_subgraphs=False,
+                speaker="teamleader", mode="async",
             )
             await mailbox_store.send(
                 to_session_id=team_id, from_session_id=caller_session_id,
@@ -140,25 +132,17 @@ def make_dispatch_tool(*, workdir: str, default_mode: str = "sync") -> BaseTool:
         child_id = child["id"]
 
         sub_agent = await build_agent(target_agent, child_workdir)
-        result = await engine.start(
+        await engine.start(
             agent=sub_agent,
             caller_session_id=caller_session_id,
             target_agent=target_agent,
             task=task,
             scope_id=scope_id,
             target_session_id=child_id,
-            mode=run_mode,
         )
-
-        if run_mode == "sync":
-            preview = (result or "")[:200]
-            return (
-                f"[{target_agent}] completed. Result:\n{preview}"
-                if result else f"[{target_agent}] completed (no text output)."
-            )
         return (
             f"Delegated to {target_agent} (task {child_id[:12]}), running in the "
-            f"background. Tell the user they can open task {child_id[:12]} to watch it."
+            f"background. Use read_mailbox later to check the result."
         )
 
     return dispatch

@@ -99,10 +99,7 @@ def _build_tools(tool_names: list[str], workdir: str, role: str = "") -> list:
     tools: list = []
     for name in tool_names:
         if name == "dispatch":
-            # manus dispatches async (fire-and-forget router); teamleader uses
-            # sync (needs results to orchestrate the next step).
-            dm = "async" if role == "manus" else "sync"
-            tools.append(make_dispatch_tool(workdir=workdir, default_mode=dm))
+            tools.append(make_dispatch_tool(workdir=workdir))
         elif name == "send_message":
             tools.append(make_send_message_tool())
         elif name == "read_mailbox":

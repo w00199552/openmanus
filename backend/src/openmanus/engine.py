@@ -227,7 +227,6 @@ class StreamEngine:
         prompt: str,
         speaker: str,
         mode: str = "async",
-        include_subgraphs: bool = True,
     ) -> str | None:
         """Run an agent the user is directly talking to.
 
@@ -235,14 +234,10 @@ class StreamEngine:
         ``mode="sync"`` awaits completion and returns the final text.
         """
         if mode == "async":
-            # IMPORTANT: keep a reference to the task — asyncio does NOT hold a
-            # strong ref to tasks created via create_task, so an unreferenced
-            # task can be GC'd before it runs (this was why teamleader's run
-            # silently never started).
             task = asyncio.create_task(
                 self._stream(
                     agent=agent, session_id=session_id, prompt=prompt,
-                    speaker=speaker, include_subgraphs=include_subgraphs,
+                    speaker=speaker,
                 )
             )
             self._tasks.add(task)
@@ -250,7 +245,7 @@ class StreamEngine:
             return None
         return await self._stream(
             agent=agent, session_id=session_id, prompt=prompt,
-            speaker=speaker, include_subgraphs=include_subgraphs,
+            speaker=speaker,
         )
 
     async def start(
@@ -262,12 +257,13 @@ class StreamEngine:
         task: str,
         scope_id: str | None,
         target_session_id: str,
-        mode: str = "async",
-    ) -> str | None:
+    ) -> str:
         """Run a DISPATCHED agent: stream it + record outcome for the caller.
 
-        ``caller_session_id`` is who dispatched this task (gets notified on
-        completion). ``target_session_id`` is this agent's own session.
+        ALWAYS deferred — the dispatched agent runs AFTER the caller's own
+        astream finishes (no concurrent astreams → no cross-talk). When done,
+        it writes the result to the whiteboard + sends the caller a mailbox
+        "result" message. The caller picks that up on its NEXT turn.
         """
         from .tools.roles import role_prompt  # lazy: avoid import cycle
 
@@ -280,23 +276,9 @@ class StreamEngine:
 
         prompt = f"{role_prompt(target_agent)}\n\nTask:\n{task}"
 
-        if mode == "sync":
-            answer = await self._stream(
-                agent=agent, session_id=target_session_id, prompt=prompt,
-                speaker=target_agent, include_subgraphs=False,
-            )
-            await self._record_result(
-                scope_id=scope_id, target_session_id=target_session_id,
-                caller_session_id=caller_session_id, target_agent=target_agent,
-                answer=answer or "",
-            )
-            return answer
-
-        # async: DEFER the start until the caller's own stream finishes.
-        # Running it concurrently (asyncio.create_task) caused cross-talk:
-        # two astreams on the same event loop contaminated each other's chunks.
-        # By deferring, the dispatched agent runs only after the caller's
-        # astream has fully completed — no concurrency, no contamination.
+        # DEFER until the caller's own stream finishes. This is the cross-talk
+        # fix: two astreams must NEVER run concurrently on the same event loop
+        # (langgraph's async generators share state and contaminate each other).
         self._pending.setdefault(caller_session_id, []).append({
             "agent": agent, "target_session_id": target_session_id,
             "prompt": prompt, "speaker": target_agent,
@@ -306,7 +288,6 @@ class StreamEngine:
 
     async def _stream(
         self, *, agent: Any, session_id: str, prompt: str, speaker: str,
-        include_subgraphs: bool = True,
     ) -> str:
         queue = channels.get_queue(session_id)
         st = _StreamState()
@@ -317,7 +298,7 @@ class StreamEngine:
                 {"messages": [HumanMessage(content=prompt)]},
                 config=config,
                 stream_mode=["messages", "updates"],
-                subgraphs=include_subgraphs,
+                subgraphs=False,
                 version="v2",
             ):
                 for f in convert_chunk(chunk, st, session_id=session_id, speaker=speaker):
@@ -360,6 +341,45 @@ class StreamEngine:
             scope_id=scope_id, target_session_id=target_session_id,
             caller_session_id=caller_session_id, target_agent=speaker, answer=answer or "",
         )
+        # Re-activate the caller (e.g. teamleader) so it can read results and
+        # decide next steps. The caller is re-run with a prompt telling it to
+        # check its mailbox. This happens AFTER this agent's stream finishes —
+        # no concurrent astreams.
+        await self._maybe_reactivate_caller(caller_session_id, scope_id)
+
+    async def _maybe_reactivate_caller(self, caller_session_id, scope_id):
+        """If all dispatched agents for a caller are done, re-run the caller."""
+        if not scope_id:
+            return
+        try:
+            from .db import session_store
+            # Check if any agents in this scope are still running
+            members = await session_store.list_in_scope(scope_id)
+            still_running = any(
+                m.get("status") == "running" for m in members
+                if m["id"] != caller_session_id
+            )
+            if still_running:
+                return  # wait for the rest
+            # All members done — re-activate the caller (teamleader) with a
+            # prompt to check results and continue.
+            caller_row = await session_store.get(caller_session_id)
+            if not caller_row or caller_row.get("status") == "running":
+                return  # caller already active
+            from .agent_factory import build_agent
+            caller_agent = await build_agent(
+                caller_row.get("name", "teamleader"),
+                caller_row.get("workdir") or ".",
+            )
+            task = asyncio.create_task(self.run(
+                agent=caller_agent, session_id=caller_session_id,
+                prompt="Your dispatched agents have reported back. Check read_mailbox for their results, then continue or write a final summary.",
+                speaker=caller_row.get("name", "teamleader"), mode="async",
+            ))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+        except Exception:  # noqa: BLE001
+            logger.exception("reactivate caller failed for %s", caller_session_id)
 
     async def _record_result(
         self, *, scope_id, target_session_id, caller_session_id, target_agent, answer,

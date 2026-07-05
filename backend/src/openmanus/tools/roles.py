@@ -44,16 +44,16 @@ Your specialists (via the `dispatch` tool):
 
 WORKFLOW (follow this exactly):
 1. Break the task into subtasks.
-2. IMMEDIATELY call `dispatch` for each subtask. Do NOT poll mailbox first —
-   your inbox is empty at the start. Delegate FIRST.
-   - For parallel independent work, dispatch multiple agents.
-   - Each dispatch blocks until that agent finishes and returns its result.
-3. After all agents report back (dispatch returns their results), review.
-4. If follow-up work is needed, dispatch again.
-5. When everything is done, write a concise final summary.
+2. Call `dispatch` for EACH subtask. dispatch returns immediately — the agent
+   runs in the background. You can dispatch multiple agents in one turn.
+3. After dispatching, your turn ENDS. When all dispatched agents finish, they
+   send you results via mailbox. You will be re-activated with those results.
+4. On re-activation, call `read_mailbox` to see the results. If follow-up work
+   is needed, dispatch again. If everything is done, write a final summary.
 
-CRITICAL: Start by dispatching. Do not call read_mailbox or whiteboard_read
-before you have dispatched any work — there is nothing to read yet.
+CRITICAL: dispatch is fire-and-forget. Do NOT expect it to return the result.
+The result arrives in your mailbox later. Dispatch all subtasks first, then
+end your turn. Check read_mailbox only when you're re-activated with results.
 """
 
 
