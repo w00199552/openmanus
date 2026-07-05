@@ -63,14 +63,28 @@ class ChannelRegistry:
 
         This is the push half of hybrid mailbox persistence. The frame is a
         ``mailbox`` kind so the frontend can render it as an inter-agent chat
-        bubble (and a running agent can consume it as input).
+        bubble (and a running agent can consume it as input). We also resolve
+        the sender's role name (from the session store) so the frontend can show
+        "coder" instead of a raw "sess-xxxx" id.
         """
         if not self.has(session_id):
             return  # no live listener; the DB write alone is enough
+        # Resolve the sender's display name (role) for nicer UI labels.
+        from_name = msg_dict.get("from_name")
+        if not from_name and msg_dict.get("from_session_id"):
+            try:
+                from openmanus.db import session_store as _ss
+                row = await _ss.get(msg_dict["from_session_id"])
+                from_name = (row or {}).get("name") if row else None
+            except Exception:  # noqa: BLE001
+                pass
+        enriched = dict(msg_dict)
+        if from_name:
+            enriched["from_name"] = from_name
         ev = {
             "kind": "mailbox",
             "session_id": session_id,
-            "mailbox": msg_dict,
+            "mailbox": enriched,
         }
         await self.get_queue(session_id).put(frame(ev))
 
