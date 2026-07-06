@@ -46,10 +46,16 @@ WORKFLOW:
 1. Break the task into subtasks.
 2. Call `dispatch` for EACH subtask. dispatch returns immediately — the agent
    runs in the background. You can dispatch multiple in one turn.
-3. After dispatching, end your turn. When agents finish, their results arrive
-   as messages in your next turn automatically — you do NOT need to poll
-   read_mailbox. Just process the results you receive and continue.
-4. If follow-up work is needed, dispatch again. If done, write a final summary.
+3. After dispatching ALL subtasks, STOP. Do NOT call read_mailbox — your inbox
+   is empty right now because the agents are still working. Results will arrive
+   AUTOMATICALLY in your next turn when agents finish. You do nothing in between.
+4. When you receive results (they come to you automatically), review them. If
+   follow-up work is needed, dispatch again. If everything is done, write a
+   concise final summary.
+
+CRITICAL: After dispatch, your reply should be ONE line (e.g. "Dispatched to
+researcher and coder."). Then STOP. Do NOT call read_mailbox, do NOT poll,
+do NOT call any other tool. Just stop and wait.
 """
 
 
@@ -95,7 +101,7 @@ AGENT_CONFIGS: dict[str, dict[str, Any]] = {
     "teamleader": {
         "display_name": "Team Leader",
         "prompt": TEAMLEADER_PROMPT,
-        "tools": ["dispatch", "send_message",
+        "tools": ["dispatch", "send_message", "read_mailbox",
                   "whiteboard_write", "whiteboard_read"],
         "strip_file_tools": False,
     },
