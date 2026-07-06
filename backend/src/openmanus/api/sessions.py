@@ -151,7 +151,7 @@ async def get_session(session_id: str, request: Request) -> dict:
                         "role": "assistant",
                         "id": mid or f"a-{len(messages)}",
                         "content": parts,
-                        "metadata": {"speaker": (s.get("name") or "assistant")},
+                        "metadata": {"speaker": (s.get("name") or "Manus")},
                     }
                     if thinking:
                         msg_obj["thinking"] = thinking

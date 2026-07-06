@@ -67,7 +67,7 @@ export const ChatPane = observer(function ChatPane() {
         </div>
 
         {/* messages: the runtime's activeMessages (single session or team merge) */}
-        <div className="flex-1 overflow-hidden">
+        <div className="min-h-0 flex-1">
           <ThreadView messages={runtime.activeMessages} session={active} />
         </div>
 
