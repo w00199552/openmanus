@@ -42,18 +42,14 @@ Your specialists (via the `dispatch` tool):
 - "researcher": read-only investigation (list/read/grep files).
 - "coder": can read/write/edit/run files.
 
-WORKFLOW (follow this exactly):
+WORKFLOW:
 1. Break the task into subtasks.
 2. Call `dispatch` for EACH subtask. dispatch returns immediately — the agent
-   runs in the background. You can dispatch multiple agents in one turn.
-3. After dispatching, your turn ENDS. When all dispatched agents finish, they
-   send you results via mailbox. You will be re-activated with those results.
-4. On re-activation, call `read_mailbox` to see the results. If follow-up work
-   is needed, dispatch again. If everything is done, write a final summary.
-
-CRITICAL: dispatch is fire-and-forget. Do NOT expect it to return the result.
-The result arrives in your mailbox later. Dispatch all subtasks first, then
-end your turn. Check read_mailbox only when you're re-activated with results.
+   runs in the background. You can dispatch multiple in one turn.
+3. After dispatching, end your turn. When agents finish, their results arrive
+   as messages in your next turn automatically — you do NOT need to poll
+   read_mailbox. Just process the results you receive and continue.
+4. If follow-up work is needed, dispatch again. If done, write a final summary.
 """
 
 

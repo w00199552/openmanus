@@ -38,11 +38,24 @@ logger = logging.getLogger(__name__)
 # listener wired yet (DB-only send, still correct).
 _channel_pusher: Callable[[str, dict], Awaitable[None]] | None = None
 
+# Hook injected by ``engine`` so a send can WAKE UP an idle recipient.
+# Signature: async wakeup(to_session_id, from_session_id) -> None.
+# The engine checks the recipient's status: if IDLE, it starts a new turn with
+# the message as prompt. If ACTIVE (running), the message just queues in the DB
+# and the agent picks it up when its current turn ends.
+_wakeup_handler: Callable[[str, str], Awaitable[None]] | None = None
+
 
 def set_channel_pusher(pusher: Callable[[str, dict], Awaitable[None]]) -> None:
     """Register the live-queue pusher (called once by ``channels`` at import)."""
     global _channel_pusher
     _channel_pusher = pusher
+
+
+def set_wakeup_handler(handler: Callable[[str, str], Awaitable[None]]) -> None:
+    """Register the wake-up handler (called once by ``engine`` at import)."""
+    global _wakeup_handler
+    _wakeup_handler = handler
 
 
 # Valid message kinds. Free-form beyond this — `content` carries the payload.
@@ -97,6 +110,15 @@ class MailboxStore:
                 await _channel_pusher(to_session_id, msg)
             except Exception:  # noqa: BLE001 - never let a push failure drop the send
                 logger.exception("mailbox live-push failed for %s", to_session_id)
+        # Wake up the recipient if it's idle (not running). This is the
+        # message-driven activation: the recipient starts a new turn with the
+        # message as input. If the recipient is ACTIVE (running), the message
+        # just queues in the DB and the agent picks it up when its turn ends.
+        if _wakeup_handler is not None:
+            try:
+                await _wakeup_handler(to_session_id, from_session_id)
+            except Exception:  # noqa: BLE001
+                logger.exception("mailbox wake-up failed for %s", to_session_id)
         return msg
 
     async def inbox(

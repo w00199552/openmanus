@@ -318,8 +318,6 @@ class StreamEngine:
             await queue.put(E.done_sentinel(session_id))
             channels.mark_finished(session_id)
             # Launch any dispatched agents that were deferred during this stream.
-            # They run AFTER this stream finishes — no concurrent astreams, no
-            # cross-talk. Each runs as its own background task on its own session.
             pending = self._pending.pop(session_id, [])
             for p in pending:
                 task = asyncio.create_task(self._start_and_record(
@@ -329,6 +327,12 @@ class StreamEngine:
                 ))
                 self._tasks.add(task)
                 task.add_done_callback(self._tasks.discard)
+            # After this turn ends, check for unread mailbox messages that
+            # arrived WHILE we were running (queued, not wake-up'd). If any,
+            # start a new turn to process them.
+            row = await session_store.get(session_id)
+            if row and row.get("status") != "running":
+                await self._start_turn_with_inbox(session_id, row)
         return await _final_text(agent, config)
 
     async def _start_and_record(
@@ -341,45 +345,9 @@ class StreamEngine:
             scope_id=scope_id, target_session_id=target_session_id,
             caller_session_id=caller_session_id, target_agent=speaker, answer=answer or "",
         )
-        # Re-activate the caller (e.g. teamleader) so it can read results and
-        # decide next steps. The caller is re-run with a prompt telling it to
-        # check its mailbox. This happens AFTER this agent's stream finishes —
-        # no concurrent astreams.
-        await self._maybe_reactivate_caller(caller_session_id, scope_id)
-
-    async def _maybe_reactivate_caller(self, caller_session_id, scope_id):
-        """If all dispatched agents for a caller are done, re-run the caller."""
-        if not scope_id:
-            return
-        try:
-            from .db import session_store
-            # Check if any agents in this scope are still running
-            members = await session_store.list_in_scope(scope_id)
-            still_running = any(
-                m.get("status") == "running" for m in members
-                if m["id"] != caller_session_id
-            )
-            if still_running:
-                return  # wait for the rest
-            # All members done — re-activate the caller (teamleader) with a
-            # prompt to check results and continue.
-            caller_row = await session_store.get(caller_session_id)
-            if not caller_row or caller_row.get("status") == "running":
-                return  # caller already active
-            from .agent_factory import build_agent
-            caller_agent = await build_agent(
-                caller_row.get("name", "teamleader"),
-                caller_row.get("workdir") or ".",
-            )
-            task = asyncio.create_task(self.run(
-                agent=caller_agent, session_id=caller_session_id,
-                prompt="Your dispatched agents have reported back. Check read_mailbox for their results, then continue or write a final summary.",
-                speaker=caller_row.get("name", "teamleader"), mode="async",
-            ))
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
-        except Exception:  # noqa: BLE001
-            logger.exception("reactivate caller failed for %s", caller_session_id)
+        # No explicit reactivation here — mailbox.send (inside _record_result)
+        # triggers the wake-up handler, which starts the caller's next turn if
+        # it's idle.
 
     async def _record_result(
         self, *, scope_id, target_session_id, caller_session_id, target_agent, answer,
@@ -402,6 +370,57 @@ class StreamEngine:
         except Exception:  # noqa: BLE001
             logger.exception("failed recording result for %s", target_session_id)
 
+    # ── message-driven wake-up ──────────────────────────────────────────────
+
+    async def _wakeup(self, to_session_id: str, from_session_id: str) -> None:
+        """Wake up an idle agent when a mailbox message arrives.
+
+        Checks the recipient's status: if IDLE (not running), starts a new turn
+        with all unread mailbox messages as the prompt. If ACTIVE (running),
+        does nothing — the message queues and the agent checks it when its turn
+        ends (see _stream finally).
+        """
+        row = await session_store.get(to_session_id)
+        if not row:
+            return
+        if row.get("status") == "running":
+            return  # agent is busy; message will queue
+        await self._start_turn_with_inbox(to_session_id, row)
+
+    async def _start_turn_with_inbox(self, session_id: str, row: dict) -> None:
+        """Build a prompt from unread mailbox messages + start a turn."""
+        msgs = await mailbox_store.inbox(session_id, unread_only=True)
+        if not msgs:
+            return
+        # Mark them read so the next wake-up doesn't re-process them.
+        await mailbox_store.mark_read(session_id, [m["id"] for m in msgs])
+        # Build a prompt summarising the messages.
+        lines = []
+        for m in msgs:
+            sender = m.get("from_name") or str(m.get("from_session_id", "?"))[:8]
+            if m.get("whiteboard_ref"):
+                lines.append(f"[{m['kind']}] from {sender}: {m.get('content','')} (whiteboard: {m['whiteboard_ref']})")
+            else:
+                lines.append(f"[{m['kind']}] from {sender}: {m.get('content','')}")
+        prompt = "You received these messages:\n" + "\n".join(lines) + "\n\nReview and continue your work, or write a final summary if everything is done."
+        role = row.get("name") or "assistant"
+        workdir = row.get("workdir") or "."
+        try:
+            from .agent_factory import build_agent
+            agent = await build_agent(role, workdir)
+            task = asyncio.create_task(self.run(
+                agent=agent, session_id=session_id, prompt=prompt,
+                speaker=role, mode="async",
+            ))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+        except Exception:  # noqa: BLE001
+            logger.exception("wake-up turn failed for %s", session_id)
+
 
 # Module-level singleton.
 engine = StreamEngine()
+
+# Register the wake-up handler so mailbox.send can trigger agent activation.
+from .mailbox import set_wakeup_handler  # noqa: E402
+set_wakeup_handler(engine._wakeup)
