@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { observer } from "mobx-react-lite";
 import { ChevronRight, ChevronDown, Wrench, Loader2, Brain } from "lucide-react";
 
@@ -19,6 +19,20 @@ import { Avatar } from "@/components/Avatar";
  * @param {{ messages: import("@/runtime/eventReducer").Message[], session?: object }} props
  */
 export const ThreadView = observer(function ThreadView({ messages = [], session }) {
+  const scrollRef = useRef(null);
+  const stickToBottom = useRef(true);
+
+  // Auto-scroll: stick to bottom as new content streams in, unless the user
+  // scrolled up to read history. Resumes stick-to-bottom near the bottom.
+  const last = messages[messages.length - 1];
+  const fingerprint = `${messages.length}:${last?.content?.length || 0}:${(last?.thinking || "").length}`;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && stickToBottom.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [fingerprint]);
+
   if (!messages.length) {
     return (
       <div className="flex h-full items-center justify-center px-6">
@@ -29,7 +43,14 @@ export const ThreadView = observer(function ThreadView({ messages = [], session 
     );
   }
   return (
-    <div className="h-full overflow-y-auto">
+    <div
+      ref={scrollRef}
+      className="h-full overflow-y-auto"
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      }}
+    >
       <div className="content-narrow px-2 py-4">
         {messages.map((m) => (
           <MessageRow key={m.id} message={m} session={session} />
@@ -134,7 +155,13 @@ const AssistantMessage = observer(function AssistantMessage({ message, session }
  */
 const ThinkingBlock = observer(function ThinkingBlock({ text, live }) {
   const [open, setOpen] = useState(live);
+  const thinkRef = useRef(null);
   if (live && !open) setOpen(true);
+  // auto-scroll the thinking content to bottom while streaming
+  useEffect(() => {
+    const el = thinkRef.current;
+    if (el && open) el.scrollTop = el.scrollHeight;
+  }, [text, open]);
   return (
     <div className="mb-2 rounded-md border border-border/40 bg-sidebar/30">
       <button
@@ -147,7 +174,10 @@ const ThinkingBlock = observer(function ThinkingBlock({ text, live }) {
         {live && <Loader2 className="ml-1 size-3 animate-spin text-muted-foreground/50" />}
       </button>
       {open && (
-        <p className="max-h-72 overflow-y-auto whitespace-pre-wrap border-t border-border/40 px-2.5 py-2 font-mono text-[11.5px] leading-relaxed text-muted-foreground/70">
+        <p
+          ref={thinkRef}
+          className="max-h-72 overflow-y-auto whitespace-pre-wrap border-t border-border/40 px-2.5 py-2 font-mono text-[11.5px] leading-relaxed text-muted-foreground/70"
+        >
           {text}
         </p>
       )}

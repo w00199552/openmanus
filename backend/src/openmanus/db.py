@@ -219,7 +219,7 @@ class SessionStore:
             if existing.get("title") != "Manus":
                 return await self.update("manus", title="Manus")
             return existing
-        return await self.create(session_id="manus", kind="root", title="Manus")
+        return await self.create(session_id="manus", kind="root", name="Manus", title="Manus")
 
     async def ensure_exists(
         self, session_id: str, *, title: str | None = None

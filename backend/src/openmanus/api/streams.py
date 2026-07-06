@@ -74,7 +74,7 @@ async def post_message(
 
     agent = await _resolve_agent(request, s)
     # speaker = who PRODUCES the streamed text = this session's agent identity.
-    speaker = s.get("name") or ("teamleader" if s.get("kind") == "team" else "assistant")
+    speaker = s.get("name") or ("TeamLeader" if s.get("kind") == "team" else "Manus")
 
     # Run the agent in the BACKGROUND. It pushes events onto the session's
     # channel; the client drains them via GET /stream. We don't await the run
