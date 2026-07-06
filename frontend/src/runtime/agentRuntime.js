@@ -41,6 +41,7 @@ export class AgentRuntime {
   // ─── internal handles (NOT observable — prefixed _) ─────────────────────
   _subHandle = null;                 // current SSE subscription handle
   _sendAborts = {};                  // session_id → AbortController (for stop)
+  _preSendSessionIds = null;         // session id snapshot before a manus turn (for _afterDelegation diff)
   // scope_id → [session_id] cache for team merging. Lives OUTSIDE mobx (module
   // level) so writing it never triggers computed re-runs — the team-view freeze
   // was an infinite loop: computed read it → refresh wrote it → re-run.
@@ -105,6 +106,14 @@ export class AgentRuntime {
    */
   async send(sessionId, text) {
     if (!text || !text.trim()) return;
+
+    // Snapshot session ids BEFORE the turn — used by _afterDelegation to detect
+    // NEW sessions created during this turn (dispatch may create team/subagent
+    // sessions, and the session list may get reloaded mid-turn, so we can't
+    // diff against the live list at _endRun time).
+    this._preSendSessionIds = new Set(
+      (this._sessionStore?.sessions || []).map((s) => s.id)
+    );
 
     // 1. optimistic user bubble
     this.messageStore.appendMessage(sessionId, {
@@ -242,7 +251,10 @@ export class AgentRuntime {
    */
   async _afterDelegation() {
     if (!this._sessionStore) return;
-    const before = new Set(this._sessionStore.sessions.map((s) => s.id));
+    // Use the snapshot taken at send() time — NOT the live list (which may
+    // have been reloaded mid-turn, already containing the new sessions).
+    const before = this._preSendSessionIds || new Set();
+    this._preSendSessionIds = null;
     const list = await this._sessionStore.load();
     const child = _newestDerived(list, before);
     if (child) {
