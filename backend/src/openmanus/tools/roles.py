@@ -95,7 +95,7 @@ AGENT_CONFIGS: dict[str, dict[str, Any]] = {
     "teamleader": {
         "display_name": "Team Leader",
         "prompt": TEAMLEADER_PROMPT,
-        "tools": ["dispatch", "send_message", "read_mailbox",
+        "tools": ["dispatch", "send_message",
                   "whiteboard_write", "whiteboard_read"],
         "strip_file_tools": False,
     },

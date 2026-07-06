@@ -373,15 +373,13 @@ class StreamEngine:
     # ── message-driven wake-up ──────────────────────────────────────────────
 
     async def _wakeup(self, to_session_id: str, from_session_id: str) -> None:
-        """Wake up an idle agent when a mailbox message arrives.
-
-        Checks the recipient's status: if IDLE (not running), starts a new turn
-        with all unread mailbox messages as the prompt. If ACTIVE (running),
-        does nothing — the message queues and the agent checks it when its turn
-        ends (see _stream finally).
-        """
+        """Wake up an idle agent when a mailbox message arrives."""
         row = await session_store.get(to_session_id)
         if not row:
+            return
+        status = row.get("status")
+        if status == "running":
+            return  # agent is busy; message will queue
             return
         if row.get("status") == "running":
             return  # agent is busy; message will queue
