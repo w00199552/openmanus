@@ -38,18 +38,16 @@ export class StreamClient {
     const es = new EventSource(url);
     es.onmessage = (ev) => {
       if (ev.data === "[DONE]") {
-        // One run finished — notify the caller, but do NOT close: EventSource
-        // auto-reconnects, and the next GET opens a fresh drain that blocks on
-        // the channel until the NEXT run produces events. This is what keeps a
-        // subscription alive across multiple turns in the same session (without
-        // the caller having to re-subscribe on every send).
+        console.log("[SSE] [DONE]");
         cb.onDone?.();
         return;
       }
       try {
-        cb.onEvent?.(JSON.parse(ev.data));
+        const evt = JSON.parse(ev.data);
+        console.log("[SSE]", evt.kind, evt.session_id?.slice(0, 8), evt.speaker || "", evt.delta?.slice(0, 20) || evt.tool || "");
+        cb.onEvent?.(evt);
       } catch {
-        /* ignore malformed frames — never let one bad frame kill the stream */
+        /* ignore malformed frames */
       }
     };
     es.onerror = (e) => {
