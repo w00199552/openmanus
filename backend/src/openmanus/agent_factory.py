@@ -133,7 +133,9 @@ async def build_agent(role: str, workdir: str) -> CompiledStateGraph:
     # concurrency fix: no shared checkpointer object → no cross-talk.
     own_checkpointer = await get_checkpointer()
 
-    cfg = AGENT_CONFIGS[role]
+    cfg = AGENT_CONFIGS.get(role) or AGENT_CONFIGS.get(role.lower())
+    if not cfg:
+        raise ValueError(f"Unknown agent role: {role!r}. Available: {list(AGENT_CONFIGS.keys())}")
     backend = _build_backend(workdir)
     tools = _build_tools(cfg.get("tools", []), workdir, role=role)
     # manus strips file tools (pure router); others keep them all.
