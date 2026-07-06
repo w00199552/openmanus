@@ -327,12 +327,8 @@ export class AgentRuntime {
     _scopeMembersCache[scopeId] = Array.from(new Set(members));
   }
 
-  /** Merge a scope's member sessions into one timeline (deduped by message id). */
+  /** Merge a scope's member sessions into one timeline (deduped + time-sorted). */
   _mergedScopeMessages(scopeId) {
-    // DO NOT call _refreshScopeMembers here — it writes _scopeMembers (an
-    // observable), which would trigger this computed to re-run → infinite loop
-    // (the team-view freeze). Members are refreshed in setActive/_resubscribe
-    // instead. Here we just read the cached list + fall back to live sessions.
     const cached = _scopeMembersCache[scopeId];
     const ids = cached || [scopeId];
     const merged = [];
@@ -345,6 +341,9 @@ export class AgentRuntime {
         }
       }
     }
+    // Sort by createdAt so messages interleave across agents by time
+    // (teamleader → researcher → teamleader → coder ...), not grouped by agent.
+    merged.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     return merged;
   }
 
