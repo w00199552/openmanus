@@ -26,6 +26,10 @@ export default defineConfig({
         target: 'http://127.0.0.1:8999',
         changeOrigin: true,
       },
+      '/agents': {
+        target: 'http://127.0.0.1:8999',
+        changeOrigin: true,
+      },
       '/workdir': {
         target: 'http://127.0.0.1:8999',
         changeOrigin: true,

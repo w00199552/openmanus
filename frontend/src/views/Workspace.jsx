@@ -7,6 +7,7 @@ import { TopNav } from "@/components/TopNav";
 import { SessionList } from "@/views/SessionList";
 import { ChatPane } from "@/views/ChatPane";
 import { Playground } from "@/views/Playground";
+import { AgentsView } from "@/views/AgentsView";
 
 // localStorage keys for persisted panel layouts (survive session switches).
 const LAYOUT_LEFT = "openmanus.layout.left"; // list | chat  (inside left half)
@@ -49,6 +50,7 @@ function loadLayout(key, fallback) {
  * sessions (New chat / History) does NOT reset dragged widths.
  */
 export const Workspace = observer(function Workspace() {
+  const [activeView, setActiveView] = useState("chat");
   const [leftLayout, setLeftLayout] = useState(() =>
     loadLayout(LAYOUT_LEFT, [16, 84]),
   );
@@ -66,9 +68,17 @@ export const Workspace = observer(function Workspace() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      <TopNav />
+      <TopNav activeView={activeView} onNavigate={setActiveView} />
 
-      {/* MAIN: left half (list | chat)  |  right half (sandbox | playground) */}
+      {/* Agents view: full-width, no panels */}
+      {activeView === "agents" && (
+        <div className="min-h-0 flex-1">
+          <AgentsView />
+        </div>
+      )}
+
+      {/* Chat view: resizable panels */}
+      {activeView === "chat" && (
       <Group
         orientation="horizontal"
         className="flex min-h-0 flex-1"
@@ -106,6 +116,7 @@ export const Workspace = observer(function Workspace() {
           <Playground />
         </Panel>
       </Group>
+      )}
     </div>
   );
 });

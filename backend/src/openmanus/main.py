@@ -35,7 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .agent_factory import build_entry_agent
 from .agent_loader import agent_loader
-from .api import sessions, streams
+from .api import agents, sessions, streams
 from .api.sessions import workdir_router
 from .config import settings
 from .db import init_db, session_store
@@ -80,6 +80,7 @@ def create_app() -> FastAPI:
     # GET /scopes/:id/stream, GET /health.
     app.include_router(streams.router)
     app.include_router(sessions.router)
+    app.include_router(agents.router)
     app.include_router(workdir_router)
     return app
 

@@ -1,5 +1,5 @@
 """API routers package."""
 
-from . import sessions, streams
+from . import agents, sessions, streams
 
-__all__ = ["sessions", "streams"]
+__all__ = ["agents", "sessions", "streams"]
