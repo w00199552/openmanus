@@ -17,3 +17,10 @@ export async function getAgent(name) {
   if (!res.ok) throw new Error(`getAgent: ${res.status}`);
   return res.json();
 }
+
+/** List all available tools (built-in + user-defined). */
+export async function listTools() {
+  const res = await fetch(`${BACKEND}/agents/meta/tools`);
+  if (!res.ok) throw new Error(`listTools: ${res.status}`);
+  return res.json();
+}

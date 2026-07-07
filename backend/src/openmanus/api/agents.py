@@ -1,12 +1,22 @@
-"""Agents API — list/get agent configurations from ~/.openmanus/agents/."""
+"""Agents API — list/get agent configurations + available tools."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter
 
 from ..agent_loader import agent_loader
+from ..tool_loader import tool_loader
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+
+# Built-in tool names (always available, not in ~/.openmanus/tools/)
+_BUILTIN_TOOLS = [
+    {"name": "dispatch", "description": "Delegate a task to another agent", "source": "builtin"},
+    {"name": "send_message", "description": "Send a message to another agent", "source": "builtin"},
+    {"name": "read_mailbox", "description": "Read your inbox messages", "source": "builtin"},
+    {"name": "whiteboard_write", "description": "Write an artefact to the whiteboard", "source": "builtin"},
+    {"name": "whiteboard_read", "description": "Read whiteboard artefacts", "source": "builtin"},
+]
 
 
 @router.get("")
@@ -27,6 +37,19 @@ async def list_agents() -> list[dict]:
             "has_prompt": bool(cfg.get("prompt")),
         })
     return result
+
+
+@router.get("/meta/tools")
+async def list_all_tools() -> list[dict]:
+    """List all available tools (built-in + user-defined)."""
+    tools = list(_BUILTIN_TOOLS)
+    for name, instance in tool_loader.tools.items():
+        tools.append({
+            "name": name,
+            "description": getattr(instance, "description", "")[:200],
+            "source": "user",
+        })
+    return tools
 
 
 @router.get("/{name}")
