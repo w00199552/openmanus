@@ -3,7 +3,7 @@ import {
   Bot, Wrench, FileText, ChevronLeft, Check, Sparkles, Save,
 } from "lucide-react";
 
-import { listAgents, getAgent, listTools, updateAgent } from "@/services/agentService";
+import { listAgents, getAgent, listTools } from "@/services/agentService";
 import { cn } from "@/lib/utils";
 
 const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
