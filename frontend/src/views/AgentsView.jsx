@@ -85,6 +85,7 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
 
   return (
     <div className="flex h-full">
+      {s.toast && <Toast {...s.toast} />}
       {/* left sidebar */}
       <div className="flex w-56 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
         <button
