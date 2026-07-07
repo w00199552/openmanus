@@ -33,10 +33,13 @@ async def list_agents() -> list[dict]:
             "skills": cfg.get("skills", []),
             "sub_agents": cfg.get("sub_agents", []),
             "is_entry": cfg.get("is_entry", False),
+            "is_builtin": cfg.get("is_entry", False) or name in ("manus", "teamleader"),
             "strip_file_tools": cfg.get("strip_file_tools", False),
             "allowed_tools": sorted(cfg.get("allowed_tools", set())),
             "has_prompt": bool(cfg.get("prompt")),
         })
+    # sort: builtin first (manus, teamleader), then by name
+    result.sort(key=lambda a: (not a["is_builtin"], a["name"] != "manus", a["name"] != "teamleader", a["name"]))
     return result
 
 

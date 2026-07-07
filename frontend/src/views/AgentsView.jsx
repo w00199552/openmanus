@@ -1,7 +1,7 @@
 import { observer } from "mobx-react-lite";
 import { useEffect, useState } from "react";
 import {
-  Bot, Wrench, FileText, ChevronLeft, Check, Sparkles, Save,
+  Bot, Wrench, FileText, ChevronLeft, Check, Sparkles, Save, Plus, Lock, AlertCircle,
 } from "lucide-react";
 import MDEditor from "@uiw/react-md-editor";
 
@@ -15,24 +15,61 @@ import { cn } from "@/lib/utils";
 export const AgentsView = observer(function AgentsView() {
   const { agentStore } = useStore();
   const [selected, setSelected] = useState(null);
+  const [createMode, setCreateMode] = useState(false);
 
   useEffect(() => { agentStore.loadAgents(); }, [agentStore]);
 
+  const builtinAgents = agentStore.agents.filter((a) => a.is_builtin);
+  const customAgents = agentStore.agents.filter((a) => !a.is_builtin);
+
   if (selected) {
     return <AgentDetail name={selected} onBack={() => { setSelected(null); agentStore.clearCurrent(); agentStore.loadAgents(); }} />;
+  }
+
+  if (createMode) {
+    return <AgentDetail mode="create" onBack={() => { setCreateMode(false); agentStore.clearCurrent(); }} />;
   }
 
   if (agentStore.loading) return <Centered>Loading…</Centered>;
 
   return (
     <div className="h-full overflow-y-auto">
+      {agentStore.toast && <Toast {...agentStore.toast} />}
       <div className="mx-auto max-w-5xl px-6 py-8">
-        <Header />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {agentStore.agents.map((a) => (
-            <AgentCard key={a.name} agent={a} onClick={() => { setSelected(a.name); agentStore.selectAgent(a.name); }} />
-          ))}
+        <div className="mb-6 flex items-center justify-between">
+          <Header />
+          <button
+            onClick={() => setCreateMode(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-[13px] text-muted-foreground transition hover:border-accent/40 hover:text-foreground"
+          >
+            <Plus className="size-3.5" />
+            New Agent
+          </button>
         </div>
+
+        {/* builtin agents */}
+        {builtinAgents.length > 0 && (
+          <>
+            <SectionTitle>Built-in</SectionTitle>
+            <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {builtinAgents.map((a) => (
+                <AgentCard key={a.name} agent={a} onClick={() => { setSelected(a.name); agentStore.selectAgent(a.name); }} />
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* custom agents */}
+        {customAgents.length > 0 && (
+          <>
+            <SectionTitle>Custom</SectionTitle>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {customAgents.map((a) => (
+                <AgentCard key={a.name} agent={a} onClick={() => { setSelected(a.name); agentStore.selectAgent(a.name); }} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -177,8 +214,11 @@ function AgentCard({ agent, onClick }) {
         <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
           <Bot className="size-5 text-accent" />
         </div>
-        <div className="min-w-0">
-          <span className="truncate text-sm font-medium">{agent.display_name}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            <span className="truncate text-sm font-medium">{agent.display_name}</span>
+            {agent.is_builtin && <Lock className="size-3 shrink-0 text-muted-foreground/50" />}
+          </div>
           <div className="mt-0.5 flex gap-1">
             {agent.is_entry && <Badge color="accent">entry</Badge>}
             {agent.strip_file_tools && <Badge>no files</Badge>}
@@ -219,4 +259,20 @@ function Badge({ children, color }) {
 
 function Centered({ children }) {
   return <div className="flex h-full items-center justify-center"><p className="text-sm text-muted-foreground">{children}</p></div>;
+}
+
+function SectionTitle({ children }) {
+  return <div className="mb-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">{children}</div>;
+}
+
+function Toast({ type, message }) {
+  return (
+    <div className={cn(
+      "fixed right-4 top-14 z-50 flex items-center gap-2 rounded-lg px-4 py-2.5 text-[13px] shadow-lg",
+      type === "error" ? "bg-destructive/15 text-destructive" : "bg-accent/15 text-accent",
+    )}>
+      {type === "error" ? <AlertCircle className="size-3.5" /> : <Check className="size-3.5" />}
+      {message}
+    </div>
+  );
 }

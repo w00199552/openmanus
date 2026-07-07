@@ -15,10 +15,16 @@ export class AgentStore {
   loading = false;
   saving = false;
   error = null;
+  toast = null;          // { type: "success"|"error", message: string } or null
 
   // edit drafts (for the detail page)
   promptDraft = "";
   toolDraft = new Set();
+
+  _showToast(type, message) {
+    this.toast = { type, message };
+    setTimeout(() => { runInAction(() => { this.toast = null; }); }, 3000);
+  }
 
   constructor() {
     makeAutoObservable(this);
@@ -84,15 +90,17 @@ export class AgentStore {
     if (!this.current) return;
     this.saving = true;
     try {
-      await fetch(`${BACKEND}/agents/${encodeURIComponent(this.current.name)}`, {
+      const res = await fetch(`${BACKEND}/agents/${encodeURIComponent(this.current.name)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: this.promptDraft, tools: [...this.toolDraft] }),
       });
-      // reload the agent to confirm
+      if (!res.ok) throw new Error(`save failed: ${res.status}`);
       await this.selectAgent(this.current.name);
+      this._showToast("success", "Agent saved successfully");
     } catch (e) {
       runInAction(() => { this.error = e.message; });
+      this._showToast("error", e.message || "Save failed");
     }
     runInAction(() => { this.saving = false; });
   }
