@@ -26,6 +26,7 @@ from .config import settings
 from .middleware.agent_trace import AgentTraceMiddleware
 from .middleware.tool_guard import ToolGuardMiddleware
 from .store import get_checkpointer
+from .tool_loader import tool_loader
 from .tools.mailbox_tools import (
     make_dispatch_tool,
     make_read_mailbox_tool,
@@ -95,9 +96,15 @@ def _resolve_scope_id(config: Any) -> str | None:
 
 
 def _build_tools(tool_names: list[str], workdir: str, role: str = "") -> list:
-    """Instantiate the extra tools listed in an agent's config."""
+    """Instantiate the extra tools listed in an agent's config.
+
+    Resolution order per name:
+      1. Built-in factory (dispatch / send_message / read_mailbox / whiteboard_*)
+      2. User-defined tool from tool_loader (~/.openmanus/tools/)
+    """
     tools: list = []
     for name in tool_names:
+        # 1. built-in factories (with runtime params)
         if name == "dispatch":
             tools.append(make_dispatch_tool(workdir=workdir))
         elif name == "send_message":
@@ -110,6 +117,13 @@ def _build_tools(tool_names: list[str], workdir: str, role: str = "") -> list:
             ))
         elif name == "whiteboard_read":
             tools.append(make_whiteboard_read_tool(scope_id_fn=_resolve_scope_id))
+        else:
+            # 2. user-defined tool (from ~/.openmanus/tools/)
+            user_tool = tool_loader.get(name)
+            if user_tool is not None:
+                tools.append(user_tool)
+            else:
+                logger.warning("unknown tool '%s' for agent '%s', skipping", name, role)
     return tools
 
 

@@ -54,6 +54,13 @@ async def lifespan(app: FastAPI):
     agent_loader.load_all()
     logger.info("loaded %d agents from %s", len(agent_loader.configs), agent_loader.dir)
 
+    # Load user-defined tools from ~/.openmanus/tools/ (if exists).
+    from .tool_loader import tool_loader
+    tool_loader.load_all()
+    if tool_loader.all_names():
+        logger.info("loaded %d user tools from %s: %s",
+                     len(tool_loader.all_names()), tool_loader.dir, tool_loader.all_names())
+
     await init_db()
     # Seed the singleton Manus entry session (idempotent; migrates legacy "default").
     await session_store.ensure_manus()
