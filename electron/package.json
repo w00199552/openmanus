@@ -1,0 +1,38 @@
+{
+  "name": "openmanus-desktop",
+  "version": "0.1.0",
+  "description": "OpenManus desktop client",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "build:frontend": "cd ../frontend && yarn build",
+    "build": "yarn build:frontend && electron-builder",
+    "start": "electron ."
+  },
+  "build": {
+    "appId": "com.openmanus.desktop",
+    "productName": "OpenManus",
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "../frontend/dist/**/*"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "devDependencies": {
+    "electron": "28.0.0",
+    "electron-builder": "^24.9.1"
+  }
+}

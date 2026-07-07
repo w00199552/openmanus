@@ -1,8 +1,7 @@
 const { app, BrowserWindow } = require("electron");
 const path = require("path");
-const url = require("url");
 
-// isDev: NODE_ENV !== "production" 或 通过 electron-is-dev 检测
+// isDev: 开发环境（未打包）= true；生产环境（打包后）= false
 const isDev = !app.isPackaged;
 
 let mainWindow;
@@ -11,9 +10,12 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
+    minWidth: 900,
+    minHeight: 600,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, "preload.cjs"),
     },
   });
 
@@ -23,13 +25,7 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // 生产环境：渲染前端打包的 index.html
-    mainWindow.loadURL(
-      url.format({
-        pathname: path.join(__dirname, "..", "frontend", "dist", "index.html"),
-        protocol: "file:",
-        slashes: true,
-      })
-    );
+    mainWindow.loadFile(path.join(__dirname, "..", "frontend", "dist", "index.html"));
   }
 
   mainWindow.on("closed", () => {
