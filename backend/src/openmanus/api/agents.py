@@ -85,6 +85,9 @@ async def update_agent(name: str, body: UpdateAgentBody) -> dict:
     """Update an agent's prompt and/or tools (writes to disk)."""
     if not agent_loader.get(name):
         raise HTTPException(status_code=404, detail="agent not found")
+    # Built-in agents (manus, teamleader) cannot be modified.
+    if name in ("manus", "teamleader"):
+        raise HTTPException(status_code=403, detail="built-in agents cannot be modified")
     if body.prompt is not None:
         agent_loader.save_prompt(name, body.prompt)
     if body.tools is not None:

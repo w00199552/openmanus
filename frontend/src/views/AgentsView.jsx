@@ -83,6 +83,8 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
 
   if (s.loading || !s.current) return <Centered>Loading…</Centered>;
 
+  const isBuiltin = s.current.name === "manus" || s.current.name === "teamleader";
+
   return (
     <div className="flex h-full">
       {s.toast && <Toast {...s.toast} />}
@@ -121,14 +123,22 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
         </div>
 
         <div className="mt-auto p-3">
-          <button
-            onClick={() => s.save()}
-            disabled={s.saving}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent/15 px-3 py-2 text-[13px] text-accent transition hover:bg-accent/25 disabled:opacity-50"
-          >
-            <Save className="size-3.5" />
-            {s.saving ? "Saving…" : "Save"}
-          </button>
+          {!isBuiltin && (
+            <button
+              onClick={() => s.save()}
+              disabled={s.saving}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent/15 px-3 py-2 text-[13px] text-accent transition hover:bg-accent/25 disabled:opacity-50"
+            >
+              <Save className="size-3.5" />
+              {s.saving ? "Saving…" : "Save"}
+            </button>
+          )}
+          {isBuiltin && (
+            <div className="flex items-center justify-center gap-1.5 px-3 py-2 text-[12px] text-muted-foreground/50">
+              <Lock className="size-3" />
+              Built-in (read-only)
+            </div>
+          )}
         </div>
       </div>
 
@@ -139,14 +149,15 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
             <div className="flex h-full flex-col">
               <h2 className="mb-3 shrink-0 text-sm font-medium">System Prompt</h2>
               <div className="min-h-0 flex-1">
-                <MDEditor
-                  value={s.promptDraft}
-                  onChange={(val) => s.setPromptDraft(val || "")}
-                  height="100%"
-                  preview="live"
-                  data-color-mode="dark"
-                  style={{ height: "100%" }}
-                />
+              <MDEditor
+                value={s.promptDraft}
+                onChange={isBuiltin ? undefined : ((val) => s.setPromptDraft(val || ""))}
+                height="100%"
+                preview="live"
+                data-color-mode="dark"
+                style={{ height: "100%" }}
+                readOnly={isBuiltin}
+              />
               </div>
             </div>
           )}
@@ -163,10 +174,13 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
                   return (
                     <button
                       key={tool.name}
-                      onClick={() => s.toggleTool(tool.name)}
+                      onClick={isBuiltin ? undefined : () => s.toggleTool(tool.name)}
+                      disabled={isBuiltin}
                       className={cn(
                         "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
-                        checked ? "border-accent/30 bg-accent/5" : "border-border/40 hover:border-border/80",
+                        checked ? "border-accent/30 bg-accent/5" : "border-border/40",
+                        !isBuiltin && "hover:border-border/80",
+                        isBuiltin && "cursor-default opacity-60",
                       )}
                     >
                       <div className={cn(
