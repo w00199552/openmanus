@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   Bot, Wrench, FileText, ChevronLeft, Check, Sparkles, Save,
 } from "lucide-react";
+import MDEditor from "@uiw/react-md-editor";
 
 import { useStore } from "@/hooks/useStore";
 import { cn } from "@/lib/utils";
@@ -99,11 +100,12 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
           {tab === "prompt" && (
             <div>
               <h2 className="mb-3 text-sm font-medium">System Prompt</h2>
-              <textarea
+              <MDEditor
                 value={s.promptDraft}
-                onChange={(e) => s.setPromptDraft(e.target.value)}
-                className="min-h-[400px] w-full resize-y rounded-lg border border-border/60 bg-sidebar/30 px-4 py-3 font-mono text-[13px] leading-relaxed text-foreground/90 outline-none focus:border-accent/40"
-                placeholder="Write the system prompt..."
+                onChange={(val) => s.setPromptDraft(val || "")}
+                height={500}
+                preview="live"
+                data-color-mode="dark"
               />
             </div>
           )}
