@@ -1,46 +1,75 @@
 @echo off
-REM deepmanus restart — kills any running deepmanus services, then starts
-REM backend + frontend fresh. This is the single launcher script (double-click
-REM it whenever you change code and want to restart).
-REM Usage: double-click restart.bat  (or run in cmd).
-REM
-REM NOTE: taskkill /F /IM python.exe kills ALL python processes, and
-REM       /F /IM node.exe kills ALL node processes. If you run other
-REM       python/node apps at the same time, stop those first or kill by PID.
+REM openmanus restart — kills old processes, then starts in order:
+REM   1. backend (:8999)  — wait for health check
+REM   2. frontend (:5173) — wait for vite ready
+REM   3. electron          — desktop client (dev mode)
+REM Usage: double-click restart.bat
 
 setlocal
 set ROOT=%~dp0
 set LOGDIR=%ROOT%.logs
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"
 
-echo [deepmanus] stopping old services...
-
-REM Kill any running processes. Ignore errors (process may not exist).
+echo [openmanus] stopping old services...
+taskkill /F /IM electron.exe >nul 2>&1
 taskkill /F /IM python.exe >nul 2>&1
 taskkill /F /IM node.exe >nul 2>&1
-
-REM Give the OS a moment to free ports :8999 / :5173.
 timeout /t 2 /nobreak >nul
 
-echo [deepmanus] starting services fresh...
+echo [openmanus] starting services fresh...
 echo.
 
 REM --- 1. backend (Python, :8999) ---
-echo [deepmanus] starting backend  (logs: .logs\backend.log)
-start "deepmanus-backend" /D "%ROOT%backend" cmd /c "uv run uvicorn openmanus.main:app --port 8999"
+echo [openmanus] starting backend...
+start "openmanus-backend" /D "%ROOT%backend" cmd /c "uv run uvicorn openmanus.main:app --port 8999"
+
+REM Wait for backend health check (max 30 retries = 30 seconds)
+set RETRIES=0
+:WAIT_BACKEND
+timeout /t 1 /nobreak >nul
+curl -s -o nul http://127.0.0.1:8999/health 2>nul
+if %ERRORLEVEL% neq 0 (
+    set /a RETRIES+=1
+    if %RETRIES% lss 30 (
+        goto :WAIT_BACKEND
+    )
+    echo [openmanus] ERROR: backend health check failed after 30s
+    pause
+    exit /b 1
+)
+echo [openmanus] backend ready (health OK)
 
 REM --- 2. frontend (vite, :5173) ---
-timeout /t 2 /nobreak >nul
-echo [deepmanus] starting frontend (logs: .logs\frontend.log)
-start "deepmanus-frontend" /D "%ROOT%frontend" cmd /c "yarn dev > %LOGDIR%\frontend.log"
+echo [openmanus] starting frontend...
+start "openmanus-frontend" /D "%ROOT%frontend" cmd /c "yarn dev"
+
+REM Wait for frontend (max 30 retries)
+set RETRIES=0
+:WAIT_FRONTEND
+timeout /t 1 /nobreak >nul
+curl -s -o nul http://localhost:5173 2>nul
+if %ERRORLEVEL% neq 0 (
+    set /a RETRIES+=1
+    if %RETRIES% lss 30 (
+        goto :WAIT_FRONTEND
+    )
+    echo [openmanus] ERROR: frontend not ready after 30s
+    pause
+    exit /b 1
+)
+echo [openmanus] frontend ready (http://localhost:5173)
+
+REM --- 3. electron (desktop client, dev mode) ---
+echo [openmanus] starting electron desktop client...
+start "openmanus-electron" /D "%ROOT%electron" cmd /c "npm run dev"
 
 echo.
-echo [deepmanus] all services starting.
+echo [openmanus] all services started:
+echo    backend:  http://127.0.0.1:8999/health
 echo    frontend: http://localhost:5173
-echo    backend:  http://localhost:8999/agents/main/health
-echo    (close the 2 popup windows to stop each service)
+echo    electron: desktop window (dev mode)
+echo    (close the popup windows to stop each service)
 echo.
 
-REM keep this window open so you can see the message
 pause
 endlocal
