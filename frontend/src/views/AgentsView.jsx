@@ -6,7 +6,13 @@ import {
 import MDEditor from "@uiw/react-md-editor";
 
 import { useStore } from "@/hooks/useStore";
+import { Avatar } from "@/components/Avatar";
 import { cn } from "@/lib/utils";
+
+// Avatar seed matching SessionList: manus → fixed face, others → name
+function agentSeed(name) {
+  return name === "manus" ? "manus-open" : name;
+}
 
 /**
  * AgentsView — card grid → click to open config (left tabs: Prompt / Tools).
@@ -100,9 +106,7 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
 
         <div className="px-4 py-2">
           <div className="flex items-center gap-2">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-accent/10">
-              <Bot className="size-4.5 text-accent" />
-            </div>
+            <Avatar seed={agentSeed(s.current.name)} size={36} />
             <div>
               <div className="text-sm font-medium">{s.current.display_name}</div>
               <code className="text-[10px] text-muted-foreground">{s.current.name}</code>
@@ -226,9 +230,7 @@ function AgentCard({ agent, onClick }) {
   return (
     <button onClick={onClick} className="group rounded-xl border border-border/60 bg-card p-4 text-left transition hover:border-accent/40 hover:bg-sidebar/30">
       <div className="mb-3 flex items-center gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-          <Bot className="size-5 text-accent" />
-        </div>
+        <Avatar seed={agentSeed(agent.name)} size={40} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
             <span className="truncate text-sm font-medium">{agent.display_name}</span>
