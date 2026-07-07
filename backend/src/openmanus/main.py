@@ -34,6 +34,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .agent_factory import build_entry_agent
+from .agent_loader import agent_loader
 from .api import sessions, streams
 from .api.sessions import workdir_router
 from .config import settings
@@ -48,6 +49,11 @@ logger = logging.getLogger("openmanus")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Load agent definitions from ~/.openmanus/agents/ (seed builtins first run).
+    agent_loader.seed_builtin()
+    agent_loader.load_all()
+    logger.info("loaded %d agents from %s", len(agent_loader.configs), agent_loader.dir)
+
     await init_db()
     # Seed the singleton Manus entry session (idempotent; migrates legacy "default").
     await session_store.ensure_manus()

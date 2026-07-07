@@ -22,9 +22,9 @@ from langchain_core.tools import BaseTool, tool
 from langchain_core.tools.base import InjectedToolArg
 from pydantic import BaseModel, Field
 
+from ..agent_loader import agent_loader
 from ..db import session_store
 from ..mailbox import mailbox_store
-from .roles import AGENT_CONFIGS, ROLES
 
 logger = logging.getLogger(__name__)
 
@@ -71,15 +71,15 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         - target_agent='teamleader': a team is created; the leader coordinates
           further specialists. Use this for complex multi-step work.
         """
-        if target_agent not in AGENT_CONFIGS:
-            return f"Unknown agent '{target_agent}'. Available: {', '.join(ROLES.keys())}."
+        if not agent_loader.get(target_agent):
+            return f"Unknown agent '{target_agent}'. Available: {', '.join(agent_loader.all_names())}."
         from ..engine import engine  # lazy: avoid import cycle
         from ..agent_factory import build_agent
 
         caller_session_id = _config_session_id(config)
         caller_row = await session_store.get(caller_session_id)
         caller_scope = (caller_row or {}).get("scope_id")
-        display_name = AGENT_CONFIGS[target_agent].get("display_name", target_agent)
+        display_name = agent_loader.get(target_agent).get("display_name", target_agent)
 
         # ── teamleader: create a team session (scope root) ──
         if target_agent == "teamleader":
@@ -126,7 +126,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
             scope_id=scope_id,
             metadata={
                 "role": target_agent,
-                "allowed_tools": sorted(ROLES[target_agent].get("allowed_tools", set())),
+                "allowed_tools": sorted(agent_loader.get(target_agent).get("allowed_tools", set())),
                 "parent": caller_session_id,
             },
         )

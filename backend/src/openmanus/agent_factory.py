@@ -20,6 +20,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_anthropic import ChatAnthropic
 from langgraph.graph.state import CompiledStateGraph
 
+from .agent_loader import agent_loader
 from .chat_model import ChatGLM
 from .config import settings
 from .middleware.agent_trace import AgentTraceMiddleware
@@ -30,7 +31,6 @@ from .tools.mailbox_tools import (
     make_read_mailbox_tool,
     make_send_message_tool,
 )
-from .tools.roles import AGENT_CONFIGS
 from .tools.whiteboard_tools import (
     make_whiteboard_read_tool,
     make_whiteboard_write_tool,
@@ -133,9 +133,9 @@ async def build_agent(role: str, workdir: str) -> CompiledStateGraph:
     # concurrency fix: no shared checkpointer object → no cross-talk.
     own_checkpointer = await get_checkpointer()
 
-    cfg = AGENT_CONFIGS.get(role) or AGENT_CONFIGS.get(role.lower())
+    cfg = agent_loader.get(role)
     if not cfg:
-        raise ValueError(f"Unknown agent role: {role!r}. Available: {list(AGENT_CONFIGS.keys())}")
+        raise ValueError(f"Unknown agent role: {role!r}. Available: {agent_loader.all_names()}")
     backend = _build_backend(workdir)
     tools = _build_tools(cfg.get("tools", []), workdir, role=role)
     # manus strips file tools (pure router); others keep them all.
@@ -173,7 +173,7 @@ async def build_entry_agent(workdir: str = None) -> CompiledStateGraph:
 
 def get_entry_role() -> str:
     """The role name of the entry agent (configurable later)."""
-    for role, cfg in AGENT_CONFIGS.items():
+    for role, cfg in agent_loader.configs.items():
         if cfg.get("is_entry"):
             return role
     return "manus"

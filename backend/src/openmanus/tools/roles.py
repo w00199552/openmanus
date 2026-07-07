@@ -1,128 +1,36 @@
-"""Agent configuration registry.
+"""Agent configuration registry — now loaded from ~/.openmanus/agents/ (YAML).
 
-All agents (manus / teamleader / coder / researcher) are defined here as
-configurations. They are EQUAL — each is an independent agent created fresh by
-``build_agent``. The only differences are the system prompt and which extra
-tools they mount. Filesystem tools (read_file, ls, ...) come from the
-LocalShellBackend for everyone; manus is special-cased to strip them (pure
-router).
+The old hardcoded AGENT_CONFIGS dict is replaced by AgentLoader, which scans
+the filesystem at startup. This module re-exports the loaded configs under the
+same names (AGENT_CONFIGS, ROLES, role_prompt) so existing code keeps working
+without changes.
 
-This is the foundation for future user-customizable / pluggable agents: a new
-agent is just a new entry here (and later, a row in an agents DB table).
+To add a new agent: drop a directory with agent.yaml + prompt.md into
+~/.openmanus/agents/ and restart.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-# ─── system prompts ─────────────────────────────────────────────────────────
+from ..agent_loader import agent_loader
 
-MANUS_PROMPT = """You are Manus, the entry routing agent. You have NO file
-tools. Your only job is to decide, in ONE short sentence, who to delegate the
-user's request to, then hand it off:
+# These are populated at startup by main.py (which calls agent_loader.load_all()).
+# Until then they're empty — code that needs them should call agent_loader directly.
+AGENT_CONFIGS: dict[str, dict[str, Any]] = agent_loader.configs
 
-1. PURE CHAT / knowledge questions (greetings, "what is X"): answer directly
-   from your own knowledge.
+# ROLES = dispatchable agents (everyone except the entry agent).
+def _compute_roles() -> dict[str, dict[str, Any]]:
+    return agent_loader.dispatchable()
 
-2. A SINGLE clear task ("implement X", "read Y", "investigate Z"): call
-   `dispatch` with target_agent="coder" (changes) or "researcher" (read-only).
-
-3. ANYTHING multi-step / needing coordination ("use a team", "research then
-   build"): call `dispatch` with target_agent="teamleader".
-
-CRITICAL: When you delegate, reply with ONE line (e.g. "Delegating to a
-coder."). Do NOT restate the task, do NOT outline steps.
-"""
-
-
-TEAMLEADER_PROMPT = """You are a Team Leader. Your job is to DELEGATE work to
-specialist agents — you do NOT do the work yourself.
-
-Your specialists (via the `dispatch` tool):
-- "researcher": read-only investigation (list/read/grep files).
-- "coder": can read/write/edit/run files.
-
-WORKFLOW:
-1. Break the task into subtasks.
-2. Call `dispatch` for EACH subtask. dispatch returns immediately — the agent
-   runs in the background. You can dispatch multiple in one turn.
-3. After dispatching ALL subtasks, STOP. Do NOT call read_mailbox — your inbox
-   is empty right now because the agents are still working. Results will arrive
-   AUTOMATICALLY in your next turn when agents finish. You do nothing in between.
-4. When you receive results (they come to you automatically), review them. If
-   follow-up work is needed, dispatch again. If everything is done, write a
-   concise final summary.
-
-CRITICAL: After dispatch, your reply should be ONE line (e.g. "Dispatched to
-researcher and coder."). Then STOP. Do NOT call read_mailbox, do NOT poll,
-do NOT call any other tool. Just stop and wait.
-"""
-
-
-RESEARCHER_PROMPT = (
-    "You are a researcher agent. Investigate the codebase to answer the task. "
-    "You may read, list, search, and grep files, but you CANNOT edit or execute "
-    "anything. Return a concise findings summary."
-)
-
-
-CODER_PROMPT = (
-    "You are a coder agent. Implement the requested change in the codebase. "
-    "You may read, edit, write, and run files. Return a brief summary of what "
-    "you changed."
-)
-
-# Backwards-compatible role_prompt() used by engine.start()
-_ROLE_PROMPTS = {
-    "researcher": RESEARCHER_PROMPT,
-    "coder": CODER_PROMPT,
-}
+# Backwards-compatible property-like access. Since AGENT_CONFIGS is a live ref
+# to agent_loader.configs, it updates automatically after load_all().
+ROLES = AGENT_CONFIGS  # alias; dispatchable filtering done at call sites
 
 
 def role_prompt(role: str) -> str:
     """The system prompt for a role, or a sensible default."""
-    return _ROLE_PROMPTS.get(role, f"You are a {role} agent. Complete the task.")
-
-
-# ─── agent configuration registry ───────────────────────────────────────────
-#
-# Each entry: display_name, prompt, tools (extra tool factory names to mount),
-# and flags. Filesystem tools come from the backend for all agents; manus has
-# them stripped via ToolGuard so it's a pure router.
-
-AGENT_CONFIGS: dict[str, dict[str, Any]] = {
-    "manus": {
-        "display_name": "Manus",
-        "prompt": MANUS_PROMPT,
-        "tools": ["dispatch"],          # only the delegation tool
-        "is_entry": True,
-        "strip_file_tools": True,       # pure router — no file access
-    },
-    "teamleader": {
-        "display_name": "Team Leader",
-        "prompt": TEAMLEADER_PROMPT,
-        "tools": ["dispatch", "send_message", "read_mailbox",
-                  "whiteboard_write", "whiteboard_read"],
-        "strip_file_tools": False,
-    },
-    "coder": {
-        "display_name": "Coder",
-        "prompt": CODER_PROMPT,
-        "tools": [],
-        "allowed_tools": {"read_file", "write_file", "edit_file",
-                          "list_directory", "ls", "glob", "grep", "execute"},
-        "strip_file_tools": False,
-    },
-    "researcher": {
-        "display_name": "Researcher",
-        "prompt": RESEARCHER_PROMPT,
-        "tools": [],
-        "allowed_tools": {"read_file", "list_directory", "ls", "glob", "grep"},
-        "strip_file_tools": False,
-    },
-}
-
-
-# Backwards compatibility: ROLES (used by dispatch tool for validation +
-# metadata). Conceptually these are just "agents you can dispatch to".
-ROLES = {k: v for k, v in AGENT_CONFIGS.items() if k != "manus"}
+    cfg = agent_loader.get(role)
+    if cfg:
+        return cfg.get("prompt", "")
+    return f"You are a {role} agent. Complete the task. Return a brief summary."
