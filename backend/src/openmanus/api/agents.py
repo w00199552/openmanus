@@ -1,8 +1,9 @@
-"""Agents API — list/get agent configurations + available tools."""
+"""Agents API — list/get/update agent configurations + available tools."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from ..agent_loader import agent_loader
 from ..tool_loader import tool_loader
@@ -57,7 +58,6 @@ async def get_agent(name: str) -> dict:
     """Get one agent's full config (including prompt text)."""
     cfg = agent_loader.get(name)
     if not cfg:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="agent not found")
     return {
         "name": name,
@@ -70,3 +70,20 @@ async def get_agent(name: str) -> dict:
         "strip_file_tools": cfg.get("strip_file_tools", False),
         "allowed_tools": sorted(cfg.get("allowed_tools", set())),
     }
+
+
+class UpdateAgentBody(BaseModel):
+    prompt: str | None = None
+    tools: list[str] | None = None
+
+
+@router.put("/{name}")
+async def update_agent(name: str, body: UpdateAgentBody) -> dict:
+    """Update an agent's prompt and/or tools (writes to disk)."""
+    if not agent_loader.get(name):
+        raise HTTPException(status_code=404, detail="agent not found")
+    if body.prompt is not None:
+        agent_loader.save_prompt(name, body.prompt)
+    if body.tools is not None:
+        agent_loader.save_tools(name, body.tools)
+    return {"ok": True, "name": name}

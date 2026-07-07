@@ -213,6 +213,53 @@ class AgentLoader:
             if not v.get("is_entry")
         }
 
+    def _agent_dir(self, name: str) -> Path:
+        """Find the on-disk directory for an agent (by name)."""
+        for entry in self._dir.iterdir():
+            if not entry.is_dir():
+                continue
+            yaml_path = entry / "agent.yaml"
+            if not yaml_path.exists():
+                continue
+            raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict) and (raw.get("name") or entry.name).lower() == name.lower():
+                return entry
+            if entry.name.lower() == name.lower():
+                return entry
+        return self._dir / name  # fallback
+
+    def save_prompt(self, name: str, prompt: str) -> None:
+        """Write the prompt body to the agent's prompt.md file."""
+        d = self._agent_dir(name)
+        yaml_path = d / "agent.yaml"
+        prompt_file = "prompt.md"
+        if yaml_path.exists():
+            raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict) and raw.get("prompt_file"):
+                prompt_file = raw["prompt_file"]
+        (d / prompt_file).write_text(prompt, encoding="utf-8")
+        # update in-memory cache
+        if name in self._configs:
+            self._configs[name]["prompt"] = prompt
+
+    def save_tools(self, name: str, tools: list[str]) -> None:
+        """Write the tools list to the agent's agent.yaml file."""
+        d = self._agent_dir(name)
+        yaml_path = d / "agent.yaml"
+        if not yaml_path.exists():
+            return
+        raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            return
+        raw["tools"] = tools
+        yaml_path.write_text(
+            yaml.dump(raw, default_flow_style=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+        # update in-memory cache
+        if name in self._configs:
+            self._configs[name]["tools"] = tools
+
     @property
     def configs(self) -> dict[str, dict[str, Any]]:
         return self._configs
