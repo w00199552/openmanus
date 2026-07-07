@@ -95,18 +95,21 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
       </div>
 
       {/* right content */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl px-6 py-6">
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="flex h-full flex-col px-6 py-6">
           {tab === "prompt" && (
-            <div>
-              <h2 className="mb-3 text-sm font-medium">System Prompt</h2>
-              <MDEditor
-                value={s.promptDraft}
-                onChange={(val) => s.setPromptDraft(val || "")}
-                height={500}
-                preview="live"
-                data-color-mode="dark"
-              />
+            <div className="flex h-full flex-col">
+              <h2 className="mb-3 shrink-0 text-sm font-medium">System Prompt</h2>
+              <div className="min-h-0 flex-1">
+                <MDEditor
+                  value={s.promptDraft}
+                  onChange={(val) => s.setPromptDraft(val || "")}
+                  height="100%"
+                  preview="live"
+                  data-color-mode="dark"
+                  style={{ height: "100%" }}
+                />
+              </div>
             </div>
           )}
 
