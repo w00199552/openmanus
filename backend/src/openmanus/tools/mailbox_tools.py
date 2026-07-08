@@ -79,13 +79,12 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         caller_session_id = _config_session_id(config)
         caller_row = await session_store.get(caller_session_id)
         caller_scope = (caller_row or {}).get("scope_id")
-        display_name = agent_loader.get(target_agent).get("display_name", target_agent)
 
         # ── teamleader: create a team session (scope root) ──
-        if target_agent == "teamleader":
+        if target_agent.lower() == "teamleader":
             team = await session_store.create(
                 kind="team",
-                name="TeamLeader",
+                name=target_agent,
                 title=task[:60] or "team task",
                 scope_id=None,
                 metadata={
@@ -95,10 +94,10 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
             )
             team_id = team["id"]
             await session_store.update(team_id, status="running")
-            team_agent = await build_agent("teamleader", workdir)
+            team_agent = await build_agent(target_agent, workdir)
             await engine.run(
                 agent=team_agent, session_id=team_id, prompt=task,
-                speaker="TeamLeader", mode="async",
+                speaker=target_agent, mode="async",
             )
             await mailbox_store.send(
                 to_session_id=team_id, from_session_id=caller_session_id,
@@ -120,8 +119,8 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
 
         child = await session_store.create(
             kind="subagent",
-            name=display_name,
-            title=task[:60] or f"{display_name} task",
+            name=target_agent,
+            title=task[:60] or f"{target_agent} task",
             workdir=child_workdir,
             scope_id=scope_id,
             metadata={
@@ -136,13 +135,13 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         await engine.start(
             agent=sub_agent,
             caller_session_id=caller_session_id,
-            target_agent=display_name,
+            target_agent=target_agent,
             task=task,
             scope_id=scope_id,
             target_session_id=child_id,
         )
         return (
-            f"Delegated to {display_name} (task {child_id[:12]}), running in the "
+            f"Delegated to {target_agent} (task {child_id[:12]}), running in the "
             f"background. Use read_mailbox later to check the result."
         )
 
