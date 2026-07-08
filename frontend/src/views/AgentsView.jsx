@@ -310,12 +310,7 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
           Agents
         </button>
         <div className="px-4 py-2">
-          <div className="flex items-center gap-2">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-accent/10">
-              <Plus className="size-4.5 text-accent" />
-            </div>
-            <div className="text-sm font-medium">New Agent</div>
-          </div>
+          <div className="text-sm font-medium text-muted-foreground">New Agent</div>
         </div>
         <div className="mt-2 flex flex-col gap-0.5 px-2">
           <TabBtn active={tab === "info"} onClick={() => setTab("info")} icon={<Bot className="size-3.5" />}>Info</TabBtn>
