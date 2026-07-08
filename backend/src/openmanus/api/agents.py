@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from ..agent_loader import agent_loader
 from ..tool_loader import tool_loader
+from ..skill_loader import skill_loader
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -55,6 +56,20 @@ async def list_all_tools() -> list[dict]:
     return tools
 
 
+@router.get("/meta/skills")
+async def list_all_skills() -> list[dict]:
+    """List all available skills from ~/.openmanus/skills/."""
+    return [
+        {
+            "name": s["name"],
+            "description": s.get("description", ""),
+            "has_scripts": s.get("has_scripts", False),
+            "has_references": s.get("has_references", False),
+        }
+        for s in skill_loader.skills.values()
+    ]
+
+
 @router.get("/{name}")
 async def get_agent(name: str) -> dict:
     """Get one agent's full config (including prompt text)."""
@@ -76,12 +91,14 @@ async def get_agent(name: str) -> dict:
 class UpdateAgentBody(BaseModel):
     prompt: str | None = None
     tools: list[str] | None = None
+    skills: list[str] | None = None
 
 
 class CreateAgentBody(BaseModel):
     name: str
     prompt: str = ""
     tools: list[str] = []
+    skills: list[str] = []
 
 
 @router.post("")
@@ -90,6 +107,8 @@ async def create_agent(body: CreateAgentBody) -> dict:
     """Create a new agent on disk."""
     try:
         agent_loader.create(body.name, body.prompt, body.tools)
+        if body.skills:
+            agent_loader.save_skills(body.name.strip(), body.skills)
         return {"ok": True, "name": body.name.strip()}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -97,16 +116,17 @@ async def create_agent(body: CreateAgentBody) -> dict:
 
 @router.put("/{name}")
 async def update_agent(name: str, body: UpdateAgentBody) -> dict:
-    """Update an agent's prompt and/or tools (writes to disk)."""
+    """Update an agent's prompt and/or tools and/or skills (writes to disk)."""
     if not agent_loader.get(name):
         raise HTTPException(status_code=404, detail="agent not found")
-    # Built-in agents (manus, teamleader) cannot be modified.
     if name.lower() in ("manus", "teamleader"):
         raise HTTPException(status_code=403, detail="built-in agents cannot be modified")
     if body.prompt is not None:
         agent_loader.save_prompt(name, body.prompt)
     if body.tools is not None:
         agent_loader.save_tools(name, body.tools)
+    if body.skills is not None:
+        agent_loader.save_skills(name, body.skills)
     return {"ok": True, "name": name}
 
 

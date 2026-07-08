@@ -61,6 +61,13 @@ async def lifespan(app: FastAPI):
         logger.info("loaded %d user tools from %s: %s",
                      len(tool_loader.all_names()), tool_loader.dir, tool_loader.all_names())
 
+    # Load skills from ~/.openmanus/skills/ (if exists).
+    from .skill_loader import skill_loader
+    skill_loader.load_all()
+    if skill_loader.all_names():
+        logger.info("loaded %d skills from %s: %s",
+                     len(skill_loader.all_names()), skill_loader.dir, skill_loader.all_names())
+
     await init_db()
     # Seed the singleton Manus entry session (idempotent; migrates legacy "default").
     await session_store.ensure_manus()

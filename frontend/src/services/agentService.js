@@ -24,3 +24,10 @@ export async function listTools() {
   if (!res.ok) throw new Error(`listTools: ${res.status}`);
   return res.json();
 }
+
+/** List all available skills. */
+export async function listSkills() {
+  const res = await fetch(`${BACKEND}/agents/meta/skills`);
+  if (!res.ok) throw new Error(`listSkills: ${res.status}`);
+  return res.json();
+}

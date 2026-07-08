@@ -1,6 +1,6 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
-import { listAgents, getAgent, listTools } from "@/services/agentService";
+import { listAgents, getAgent, listTools, listSkills } from "@/services/agentService";
 
 const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
 
@@ -11,15 +11,17 @@ const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
 export class AgentStore {
   agents = [];
   tools = [];
-  current = null;        // selected agent detail (with prompt)
+  skills = [];
+  current = null;
   loading = false;
   saving = false;
   error = null;
-  toast = null;          // { type: "success"|"error", message: string } or null
+  toast = null;
 
-  // edit drafts (for the detail page)
+  // edit drafts
   promptDraft = "";
   toolDraft = new Set();
+  skillDraft = new Set();
 
   _showToast(type, message) {
     this.toast = { type, message };
@@ -50,16 +52,26 @@ export class AgentStore {
     } catch { /* ignore */ }
   }
 
-  /** Open an agent's detail (loads full config + tools). */
+  /** Load all available skills. */
+  async loadSkills() {
+    try {
+      const data = await listSkills();
+      runInAction(() => { this.skills = data; });
+    } catch { /* ignore */ }
+  }
+
+  /** Open an agent's detail (loads full config + tools + skills). */
   async selectAgent(name) {
     this.loading = true;
     try {
-      const [agent, tools] = await Promise.all([getAgent(name), listTools()]);
+      const [agent, tools, skills] = await Promise.all([getAgent(name), listTools(), listSkills()]);
       runInAction(() => {
         this.current = agent;
         this.tools = tools;
+        this.skills = skills;
         this.promptDraft = agent.prompt || "";
         this.toolDraft = new Set(agent.tools || []);
+        this.skillDraft = new Set(agent.skills || []);
         this.loading = false;
       });
     } catch (e) {
@@ -83,6 +95,11 @@ export class AgentStore {
     else this.toolDraft.add(name);
   }
 
+  toggleSkill(name) {
+    if (this.skillDraft.has(name)) this.skillDraft.delete(name);
+    else this.skillDraft.add(name);
+  }
+
   // ─── save ────────────────────────────────────────────────────────────────
 
   /** Save prompt + tools to backend (writes agent.yaml + prompt.md on disk). */
@@ -93,7 +110,7 @@ export class AgentStore {
       const res = await fetch(`${BACKEND}/agents/${encodeURIComponent(this.current.name)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: this.promptDraft, tools: [...this.toolDraft] }),
+        body: JSON.stringify({ prompt: this.promptDraft, tools: [...this.toolDraft], skills: [...this.skillDraft] }),
       });
       if (!res.ok) throw new Error(`save failed: ${res.status}`);
       await this.selectAgent(this.current.name);
@@ -106,7 +123,7 @@ export class AgentStore {
   }
 
   /** Create a new agent on disk. Returns true on success. */
-  async create(name, prompt, tools) {
+  async create(name, prompt, tools, skills = []) {
     this.saving = true;
     try {
       const res = await fetch(`${BACKEND}/agents`, {

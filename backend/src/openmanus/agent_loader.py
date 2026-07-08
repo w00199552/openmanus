@@ -254,6 +254,23 @@ class AgentLoader:
         if name in self._configs:
             self._configs[name]["tools"] = tools
 
+    def save_skills(self, name: str, skills: list[str]) -> None:
+        """Write the skills list to the agent's agent.yaml file."""
+        d = self._agent_dir(name)
+        yaml_path = d / "agent.yaml"
+        if not yaml_path.exists():
+            return
+        raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            return
+        raw["skills"] = skills
+        yaml_path.write_text(
+            yaml.dump(raw, default_flow_style=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+        if name in self._configs:
+            self._configs[name]["skills"] = skills
+
     def create(self, name: str, prompt: str, tools: list[str]) -> dict:
         """Create a new agent on disk (directory + agent.yaml + prompt.md).
 

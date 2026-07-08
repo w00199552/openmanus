@@ -150,16 +150,38 @@ async def build_agent(role: str, workdir: str) -> CompiledStateGraph:
     cfg = agent_loader.get(role)
     if not cfg:
         raise ValueError(f"Unknown agent role: {role!r}. Available: {agent_loader.all_names()}")
-    backend = _build_backend(workdir)
     tools = _build_tools(cfg.get("tools", []), workdir, role=role)
     # manus strips file tools (pure router); others keep them all.
     excluded = _FILE_TOOLS if cfg.get("strip_file_tools") else frozenset({"task"})
+
+    # Build backend: CompositeBackend routes /skills/ to read-only, everything
+    # else to the working directory (read-write).
+    from deepagents.backends.composite import CompositeBackend
+    from .readonly_backend import ReadOnlyFilesystemBackend
+    from .skill_loader import skill_loader, SKILLS_DIR
+
+    default_backend = _build_backend(workdir)
+    routes = {}
+    # Mount /skills/ as read-only if the agent has skills configured.
+    skill_names = cfg.get("skills", [])
+    if skill_names and SKILLS_DIR.exists():
+        routes["/skills/"] = ReadOnlyFilesystemBackend(root_dir=str(SKILLS_DIR))
+    backend = CompositeBackend(default=default_backend, routes=routes) if routes else default_backend
+
+    # Build skill paths for SkillsMiddleware (absolute paths to skill dirs).
+    skill_paths = []
+    for sname in skill_names:
+        sdir = skill_loader.skill_dir(sname)
+        if sdir:
+            skill_paths.append(str(sdir))
+
     return create_deep_agent(
         model=_default_model,
         system_prompt=cfg["prompt"],
         tools=tools,
         backend=backend,
         checkpointer=own_checkpointer,
+        skills=skill_paths if skill_paths else None,
         middleware=[
             ToolGuardMiddleware(excluded=excluded),
             AgentTraceMiddleware(name=role),

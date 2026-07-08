@@ -215,7 +215,47 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
           {tab === "skills" && (
             <div>
               <h2 className="mb-3 text-sm font-medium">Skills</h2>
-              <p className="text-[12px] text-muted-foreground">Skills are file bundles (Claude Code style). Coming soon.</p>
+              <p className="mb-4 text-[12px] text-muted-foreground">
+                Skills are loaded progressively by the agent (SKILL.md + scripts). Select which skills this agent can access.
+              </p>
+              {s.skills.length === 0 ? (
+                <p className="text-[12px] text-muted-foreground/60">No skills installed. Create skills in ~/.openmanus/skills/.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {s.skills.map((skill) => {
+                    const checked = s.skillDraft.has(skill.name);
+                    return (
+                      <button
+                        key={skill.name}
+                        onClick={isBuiltin ? undefined : () => s.toggleSkill(skill.name)}
+                        disabled={isBuiltin}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
+                          checked ? "border-accent/30 bg-accent/5" : "border-border/40",
+                          !isBuiltin && "hover:border-border/80",
+                          isBuiltin && "cursor-default opacity-60",
+                        )}
+                      >
+                        <div className={cn(
+                          "flex size-5 shrink-0 items-center justify-center rounded border",
+                          checked ? "border-accent bg-accent" : "border-border/60",
+                        )}>
+                          {checked && <Check className="size-3 text-accent-foreground" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[13px] font-medium">{skill.name}</span>
+                            {skill.has_scripts && (
+                              <span className="rounded-sm bg-accent/10 px-1 py-0.5 text-[9px] text-accent">scripts</span>
+                            )}
+                          </div>
+                          <p className="truncate text-[11px] text-muted-foreground">{skill.description}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -282,8 +322,9 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [selectedTools, setSelectedTools] = useState(new Set());
+  const [selectedSkills, setSelectedSkills] = useState(new Set());
 
-  useEffect(() => { s.loadTools(); }, [s]);
+  useEffect(() => { s.loadTools(); s.loadSkills(); }, [s]);
 
   const toggleTool = (toolName) => {
     setSelectedTools((prev) => {
@@ -294,10 +335,19 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
     });
   };
 
+  const toggleSkillItem = (skillName) => {
+    setSelectedSkills((prev) => {
+      const next = new Set(prev);
+      if (next.has(skillName)) next.delete(skillName);
+      else next.add(skillName);
+      return next;
+    });
+  };
+
   const handleCreate = async () => {
     if (!name.trim()) return;
-    const ok = await s.create(name.trim(), prompt, [...selectedTools]);
-    if (ok) onCreated(name.trim().toLowerCase());
+    const ok = await s.create(name.trim(), prompt, [...selectedTools], [...selectedSkills]);
+    if (ok) onCreated(name.trim());
   };
 
   return (
@@ -411,10 +461,41 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
           {tab === "skills" && (
             <div>
               <h2 className="mb-3 text-sm font-medium">Skills</h2>
-              <p className="text-[12px] text-muted-foreground">
-                Skills are file bundles (Claude Code style). Create or install skills in the Skills page. Coming soon.
+              <p className="mb-4 text-[12px] text-muted-foreground">
+                Select skills for this agent.
               </p>
+              {s.skills.length === 0 ? (
+                <p className="text-[12px] text-muted-foreground/60">No skills installed in ~/.openmanus/skills/.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {s.skills.map((skill) => {
+                    const checked = selectedSkills.has(skill.name);
+                    return (
+                      <button
+                        key={skill.name}
+                        onClick={() => toggleSkillItem(skill.name)}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
+                          checked ? "border-accent/30 bg-accent/5" : "border-border/40 hover:border-border/80",
+                        )}
+                      >
+                        <div className={cn(
+                          "flex size-5 shrink-0 items-center justify-center rounded border",
+                          checked ? "border-accent bg-accent" : "border-border/60",
+                        )}>
+                          {checked && <Check className="size-3 text-accent-foreground" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[13px] font-medium">{skill.name}</span>
+                          <p className="truncate text-[11px] text-muted-foreground">{skill.description}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
+          )}
           )}
         </div>
       </div>
