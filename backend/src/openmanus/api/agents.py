@@ -32,13 +32,13 @@ async def list_agents() -> list[dict]:
             "skills": cfg.get("skills", []),
             "sub_agents": cfg.get("sub_agents", []),
             "is_entry": cfg.get("is_entry", False),
-            "is_builtin": cfg.get("is_entry", False) or name in ("manus", "teamleader"),
+            "is_builtin": cfg.get("is_entry", False) or name.lower() in ("manus", "teamleader"),
             "strip_file_tools": cfg.get("strip_file_tools", False),
             "allowed_tools": sorted(cfg.get("allowed_tools", set())),
             "has_prompt": bool(cfg.get("prompt")),
         })
-    # sort: builtin first (manus, teamleader), then by name
-    result.sort(key=lambda a: (not a["is_builtin"], a["name"] != "manus", a["name"] != "teamleader", a["name"]))
+    # sort: builtin first, then by name
+    result.sort(key=lambda a: (not a["is_builtin"], a["name"]))
     return result
 
 
@@ -90,7 +90,7 @@ async def create_agent(body: CreateAgentBody) -> dict:
     """Create a new agent on disk."""
     try:
         agent_loader.create(body.name, body.prompt, body.tools)
-        return {"ok": True, "name": body.name.lower()}
+        return {"ok": True, "name": body.name.strip()}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -101,7 +101,7 @@ async def update_agent(name: str, body: UpdateAgentBody) -> dict:
     if not agent_loader.get(name):
         raise HTTPException(status_code=404, detail="agent not found")
     # Built-in agents (manus, teamleader) cannot be modified.
-    if name in ("manus", "teamleader"):
+    if name.lower() in ("manus", "teamleader"):
         raise HTTPException(status_code=403, detail="built-in agents cannot be modified")
     if body.prompt is not None:
         agent_loader.save_prompt(name, body.prompt)

@@ -169,7 +169,7 @@ class AgentLoader:
                 raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
                 if not isinstance(raw, dict):
                     continue
-                name = (raw.get("name") or entry.name).lower()
+                name = raw.get("name") or entry.name
                 # load prompt from prompt_file
                 prompt = ""
                 prompt_file = raw.get("prompt_file", "prompt.md")
@@ -259,7 +259,7 @@ class AgentLoader:
 
         Raises ValueError if the name already exists.
         """
-        name = name.lower().strip()
+        name = name.strip()
         if not name:
             raise ValueError("agent name cannot be empty")
         if name in self._configs:
