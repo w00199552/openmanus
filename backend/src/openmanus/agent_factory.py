@@ -95,7 +95,7 @@ def _resolve_scope_id(config: Any) -> str | None:
     return sid if sid != "unknown" else None
 
 
-def _build_tools(tool_names: list[str], workdir: str, role: str = "") -> list:
+def _build_tools(tool_names: list[str], workdir: str, agent_name: str = "") -> list:
     """Instantiate the extra tools listed in an agent's config.
 
     Resolution order per name:
@@ -103,32 +103,36 @@ def _build_tools(tool_names: list[str], workdir: str, role: str = "") -> list:
       2. User-defined tool from tool_loader (~/.openmanus/tools/)
     """
     tools: list = []
-    for name in tool_names:
+    for tname in tool_names:
         # 1. built-in factories (with runtime params)
-        if name == "dispatch":
+        if tname == "dispatch":
             tools.append(make_dispatch_tool(workdir=workdir))
-        elif name == "send_message":
+        elif tname == "send_message":
             tools.append(make_send_message_tool())
-        elif name == "read_mailbox":
+        elif tname == "read_mailbox":
             tools.append(make_read_mailbox_tool())
-        elif name == "whiteboard_write":
+        elif tname == "whiteboard_write":
             tools.append(make_whiteboard_write_tool(
                 session_id_fn=_resolve_session_id, scope_id_fn=_resolve_scope_id,
             ))
-        elif name == "whiteboard_read":
+        elif tname == "whiteboard_read":
             tools.append(make_whiteboard_read_tool(scope_id_fn=_resolve_scope_id))
         else:
             # 2. user-defined tool (from ~/.openmanus/tools/)
-            user_tool = tool_loader.get(name)
+            user_tool = tool_loader.get(tname)
             if user_tool is not None:
                 tools.append(user_tool)
             else:
-                logger.warning("unknown tool '%s' for agent '%s', skipping", name, role)
+                logger.warning("unknown tool '%s' for agent '%s', skipping", tname, agent_name)
     return tools
 
 
-async def build_agent(role: str, workdir: str) -> CompiledStateGraph:
-    """Create a FRESH, independent agent for the given role.
+# The entry agent name (hardcoded — the user-facing entry point).
+ENTRY_AGENT = "manus"
+
+
+async def build_agent(name: str, workdir: str) -> CompiledStateGraph:
+    """Create a FRESH, independent agent by name.
 
     Each call returns a new CompiledStateGraph with its OWN checkpointer
     instance — never reused, never shared. Sharing a checkpointer across
@@ -147,11 +151,10 @@ async def build_agent(role: str, workdir: str) -> CompiledStateGraph:
     # concurrency fix: no shared checkpointer object → no cross-talk.
     own_checkpointer = await get_checkpointer()
 
-    cfg = agent_loader.get(role)
+    cfg = agent_loader.get(name)
     if not cfg:
-        raise ValueError(f"Unknown agent role: {role!r}. Available: {agent_loader.all_names()}")
-    tools = _build_tools(cfg.get("tools", []), workdir, role=role)
-    # manus strips file tools (pure router); others keep them all.
+        raise ValueError(f"Unknown agent name: {name!r}. Available: {agent_loader.all_names()}")
+    tools = _build_tools(cfg.get("tools", []), workdir, agent_name=name)
     excluded = _FILE_TOOLS if cfg.get("strip_file_tools") else frozenset({"task"})
 
     # Build backend: CompositeBackend routes /skills/ to read-only, everything
@@ -184,9 +187,9 @@ async def build_agent(role: str, workdir: str) -> CompiledStateGraph:
         skills=skill_paths if skill_paths else None,
         middleware=[
             ToolGuardMiddleware(excluded=excluded),
-            AgentTraceMiddleware(name=role),
+            AgentTraceMiddleware(name=name),
         ],
-        name=f"openmanus-{role}",
+        name=f"openmanus-{name}",
     )
 
 
@@ -203,13 +206,8 @@ async def build_entry_agent(workdir: str = None) -> CompiledStateGraph:
         global _default_model
         if _default_model is None:
             _default_model = _build_model()
-        _entry_agent_cache[wd] = await build_agent("manus", wd)
+        _entry_agent_cache[wd] = await build_agent(ENTRY_AGENT, wd)
     return _entry_agent_cache[wd]
 
 
-def get_entry_role() -> str:
-    """The role name of the entry agent (configurable later)."""
-    for role, cfg in agent_loader.configs.items():
-        if cfg.get("is_entry"):
-            return role
-    return "manus"
+# Entry agent name is hardcoded — use ENTRY_AGENT constant, not is_entry flag.

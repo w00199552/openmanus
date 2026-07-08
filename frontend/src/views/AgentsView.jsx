@@ -277,7 +277,7 @@ function AgentCard({ agent, onClick }) {
             {agent.is_builtin && <Lock className="size-3 shrink-0 text-muted-foreground/50" />}
           </div>
           <div className="mt-0.5 flex gap-1">
-            {agent.is_entry && <Badge color="accent">entry</Badge>}
+            
             {agent.strip_file_tools && <Badge>no files</Badge>}
           </div>
         </div>

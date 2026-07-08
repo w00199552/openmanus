@@ -32,7 +32,6 @@ AGENTS_DIR = OPENMANUS_HOME / "agents"
 _BUILTIN_AGENTS: dict[str, dict[str, Any]] = {
     "manus": {
         "tools": ["dispatch"],
-        "is_entry": True,
         "strip_file_tools": True,
         "allowed_tools": [],
         "prompt": """\
@@ -56,7 +55,6 @@ coder."). Do NOT restate the task, do NOT outline steps.
     "teamleader": {
         "tools": ["dispatch", "send_message", "read_mailbox",
                   "whiteboard_write", "whiteboard_read"],
-        "is_entry": False,
         "strip_file_tools": False,
         "allowed_tools": [],
         "prompt": """\
@@ -85,7 +83,6 @@ do NOT call any other tool. Just stop and wait.
     },
     "coder": {
         "tools": [],
-        "is_entry": False,
         "strip_file_tools": False,
         "allowed_tools": ["read_file", "write_file", "edit_file",
                           "list_directory", "ls", "glob", "grep", "execute"],
@@ -96,7 +93,6 @@ read, edit, write, and run files. Return a brief summary of what you changed.
     },
     "researcher": {
         "tools": [],
-        "is_entry": False,
         "strip_file_tools": False,
         "allowed_tools": ["read_file", "list_directory", "ls", "glob", "grep"],
         "prompt": """\
@@ -138,7 +134,6 @@ class AgentLoader:
                 "tools": cfg["tools"],
                 "skills": [],
                 "sub_agents": [],
-                "is_entry": cfg["is_entry"],
                 "strip_file_tools": cfg["strip_file_tools"],
                 "allowed_tools": cfg["allowed_tools"],
             }
@@ -182,7 +177,6 @@ class AgentLoader:
                     "tools": raw.get("tools", []),
                     "skills": raw.get("skills", []),
                     "sub_agents": raw.get("sub_agents", []),
-                    "is_entry": raw.get("is_entry", False),
                     "strip_file_tools": raw.get("strip_file_tools", False),
                     "allowed_tools": set(raw.get("allowed_tools", [])),
                 }
@@ -204,7 +198,6 @@ class AgentLoader:
         """Agents that can be dispatched to (i.e. not the entry agent)."""
         return {
             k: v for k, v in self._configs.items()
-            if not v.get("is_entry")
         }
 
     def _agent_dir(self, name: str) -> Path:
@@ -294,7 +287,6 @@ class AgentLoader:
             "tools": tools,
             "skills": [],
             "sub_agents": [],
-            "is_entry": False,
             "strip_file_tools": False,
             "allowed_tools": [],
         }
@@ -308,7 +300,6 @@ class AgentLoader:
             "tools": tools,
             "skills": [],
             "sub_agents": [],
-            "is_entry": False,
             "strip_file_tools": False,
             "allowed_tools": set(),
         }

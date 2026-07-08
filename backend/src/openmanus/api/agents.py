@@ -32,8 +32,6 @@ async def list_agents() -> list[dict]:
             "tools": cfg.get("tools", []),
             "skills": cfg.get("skills", []),
             "sub_agents": cfg.get("sub_agents", []),
-            "is_entry": cfg.get("is_entry", False),
-            "is_builtin": cfg.get("is_entry", False) or name.lower() in ("manus", "teamleader"),
             "strip_file_tools": cfg.get("strip_file_tools", False),
             "allowed_tools": sorted(cfg.get("allowed_tools", set())),
             "has_prompt": bool(cfg.get("prompt")),
@@ -82,7 +80,6 @@ async def get_agent(name: str) -> dict:
         "tools": cfg.get("tools", []),
         "skills": cfg.get("skills", []),
         "sub_agents": cfg.get("sub_agents", []),
-        "is_entry": cfg.get("is_entry", False),
         "strip_file_tools": cfg.get("strip_file_tools", False),
         "allowed_tools": sorted(cfg.get("allowed_tools", set())),
     }
