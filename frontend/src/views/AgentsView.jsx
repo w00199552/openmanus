@@ -33,7 +33,7 @@ export const AgentsView = observer(function AgentsView() {
   }
 
   if (createMode) {
-    return <CreateAgent onBack={() => { setCreateMode(false); agentStore.loadTools(); }} onCreated={(name) => { setCreateMode(false); setSelected(name); agentStore.selectAgent(name); }} />;
+    return <CreateAgent onBack={() => setCreateMode(false)} onCreated={(name) => { setCreateMode(false); setSelected(name); agentStore.selectAgent(name); }} />;
   }
 
   if (agentStore.loading) return <Centered>Loading…</Centered>;
@@ -108,7 +108,7 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
           <div className="flex items-center gap-2">
             <Avatar seed={agentSeed(s.current.name)} size={36} />
             <div>
-              <div className="text-sm font-medium">{s.current.display_name}</div>
+              <div className="text-sm font-medium">{s.current.name}</div>
               <code className="text-[10px] text-muted-foreground">{s.current.name}</code>
             </div>
           </div>
@@ -233,7 +233,7 @@ function AgentCard({ agent, onClick }) {
         <Avatar seed={agentSeed(agent.name)} size={40} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
-            <span className="truncate text-sm font-medium">{agent.display_name}</span>
+            <span className="truncate text-sm font-medium">{agent.name}</span>
             {agent.is_builtin && <Lock className="size-3 shrink-0 text-muted-foreground/50" />}
           </div>
           <div className="mt-0.5 flex gap-1">
@@ -278,8 +278,8 @@ function Badge({ children, color }) {
 
 const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
   const { agentStore: s } = useStore();
+  const [tab, setTab] = useState("info");
   const [name, setName] = useState("");
-  const [displayName, setDisplayName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [selectedTools, setSelectedTools] = useState(new Set());
 
@@ -296,14 +296,14 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
 
   const handleCreate = async () => {
     if (!name.trim()) return;
-    const ok = await s.create(name.trim(), displayName.trim() || name.trim(), prompt, [...selectedTools]);
+    const ok = await s.create(name.trim(), prompt, [...selectedTools]);
     if (ok) onCreated(name.trim().toLowerCase());
   };
 
   return (
     <div className="flex h-full">
       {s.toast && <Toast {...s.toast} />}
-      {/* left sidebar */}
+      {/* left sidebar: tabs */}
       <div className="flex w-56 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
         <button onClick={onBack} className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:text-foreground">
           <ChevronLeft className="size-4" />
@@ -316,6 +316,12 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
             </div>
             <div className="text-sm font-medium">New Agent</div>
           </div>
+        </div>
+        <div className="mt-2 flex flex-col gap-0.5 px-2">
+          <TabBtn active={tab === "info"} onClick={() => setTab("info")} icon={<Bot className="size-3.5" />}>Info</TabBtn>
+          <TabBtn active={tab === "prompt"} onClick={() => setTab("prompt")} icon={<FileText className="size-3.5" />}>Prompt</TabBtn>
+          <TabBtn active={tab === "tools"} onClick={() => setTab("tools")} icon={<Wrench className="size-3.5" />}>Tools</TabBtn>
+          <TabBtn active={tab === "skills"} onClick={() => setTab("skills")} icon={<Sparkles className="size-3.5" />}>Skills</TabBtn>
         </div>
         <div className="mt-auto p-3">
           <button
@@ -330,80 +336,91 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
       </div>
 
       {/* right content */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl space-y-6 px-6 py-6">
-          {/* name fields */}
-          <div className="space-y-3">
-            <div>
-              <label className="mb-1 block text-[12px] font-medium text-muted-foreground">Agent Name (unique, lowercase)</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. code_reviewer"
-                className="w-full rounded-lg border border-border/60 bg-sidebar/30 px-3 py-2 text-[13px] outline-none focus:border-accent/40"
-              />
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="flex h-full flex-col px-6 py-6">
+          {tab === "info" && (
+            <div className="space-y-4">
+              <h2 className="text-sm font-medium">Agent Info</h2>
+              <div>
+                <label className="mb-1 block text-[12px] font-medium text-muted-foreground">Name (unique identifier)</label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. code_reviewer"
+                  className="w-full rounded-lg border border-border/60 bg-sidebar/30 px-3 py-2 text-[13px] outline-none focus:border-accent/40"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground/60">Lowercase, no spaces. Used as the agent's unique key.</p>
+              </div>
             </div>
-            <div>
-              <label className="mb-1 block text-[12px] font-medium text-muted-foreground">Display Name</label>
-              <input
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="e.g. Code Reviewer"
-                className="w-full rounded-lg border border-border/60 bg-sidebar/30 px-3 py-2 text-[13px] outline-none focus:border-accent/40"
-              />
+          )}
+
+          {tab === "prompt" && (
+            <div className="flex h-full flex-col">
+              <h2 className="mb-3 shrink-0 text-sm font-medium">System Prompt</h2>
+              <div className="min-h-0 flex-1">
+                <MDEditor
+                  value={prompt}
+                  onChange={(val) => setPrompt(val || "")}
+                  height="100%"
+                  preview="live"
+                  data-color-mode="dark"
+                  style={{ height: "100%" }}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* prompt */}
-          <div>
-            <label className="mb-2 block text-[12px] font-medium text-muted-foreground">System Prompt</label>
-            <MDEditor
-              value={prompt}
-              onChange={(val) => setPrompt(val || "")}
-              height={300}
-              preview="live"
-              data-color-mode="dark"
-            />
-          </div>
-
-          {/* tools */}
-          <div>
-            <label className="mb-2 block text-[12px] font-medium text-muted-foreground">Tools</label>
-            <div className="space-y-1.5">
-              {s.tools.map((tool) => {
-                const checked = selectedTools.has(tool.name);
-                return (
-                  <button
-                    key={tool.name}
-                    onClick={() => toggleTool(tool.name)}
-                    className={cn(
-                      "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
-                      checked ? "border-accent/30 bg-accent/5" : "border-border/40 hover:border-border/80",
-                    )}
-                  >
-                    <div className={cn(
-                      "flex size-5 shrink-0 items-center justify-center rounded border",
-                      checked ? "border-accent bg-accent" : "border-border/60",
-                    )}>
-                      {checked && <Check className="size-3 text-accent-foreground" />}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[13px] font-medium">{tool.name}</span>
-                        <span className={cn(
-                          "rounded-sm px-1 py-0.5 text-[9px]",
-                          tool.source === "user" ? "bg-accent/10 text-accent" : "bg-muted/20 text-muted-foreground",
-                        )}>
-                          {tool.source}
-                        </span>
+          {tab === "tools" && (
+            <div>
+              <h2 className="mb-3 text-sm font-medium">Tools</h2>
+              <p className="mb-4 text-[12px] text-muted-foreground">
+                Select tools for this agent. Create or import new tools in the Tools page.
+              </p>
+              <div className="space-y-1.5">
+                {s.tools.map((tool) => {
+                  const checked = selectedTools.has(tool.name);
+                  return (
+                    <button
+                      key={tool.name}
+                      onClick={() => toggleTool(tool.name)}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
+                        checked ? "border-accent/30 bg-accent/5" : "border-border/40 hover:border-border/80",
+                      )}
+                    >
+                      <div className={cn(
+                        "flex size-5 shrink-0 items-center justify-center rounded border",
+                        checked ? "border-accent bg-accent" : "border-border/60",
+                      )}>
+                        {checked && <Check className="size-3 text-accent-foreground" />}
                       </div>
-                      <p className="truncate text-[11px] text-muted-foreground">{tool.description}</p>
-                    </div>
-                  </button>
-                );
-              })}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[13px] font-medium">{tool.name}</span>
+                          <span className={cn(
+                            "rounded-sm px-1 py-0.5 text-[9px]",
+                            tool.source === "user" ? "bg-accent/10 text-accent" : "bg-muted/20 text-muted-foreground",
+                          )}>
+                            {tool.source}
+                          </span>
+                        </div>
+                        <p className="truncate text-[11px] text-muted-foreground">{tool.description}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
+
+          {tab === "skills" && (
+            <div>
+              <h2 className="mb-3 text-sm font-medium">Skills</h2>
+              <p className="text-[12px] text-muted-foreground">
+                Skills are file bundles (Claude Code style). Create or install skills in the Skills page. Coming soon.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

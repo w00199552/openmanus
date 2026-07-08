@@ -106,13 +106,13 @@ export class AgentStore {
   }
 
   /** Create a new agent on disk. Returns true on success. */
-  async create(name, displayName, prompt, tools) {
+  async create(name, prompt, tools) {
     this.saving = true;
     try {
       const res = await fetch(`${BACKEND}/agents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, display_name: displayName, prompt, tools }),
+        body: JSON.stringify({ name, prompt, tools }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

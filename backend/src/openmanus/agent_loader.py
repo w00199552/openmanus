@@ -1,7 +1,7 @@
 """AgentLoader — loads agent definitions from ~/.openmanus/agents/ (YAML + prompt.md).
 
 Each agent is a subdirectory containing:
-  - agent.yaml : configuration (name, display_name, tools, flags, ...)
+  - agent.yaml : configuration (name, tools, flags, ...)
   - prompt.md  : system prompt (markdown, loaded as the system_prompt string)
 
 On startup, main.py calls seed_builtin() (first-run only) then load_all().
@@ -31,7 +31,6 @@ AGENTS_DIR = OPENMANUS_HOME / "agents"
 
 _BUILTIN_AGENTS: dict[str, dict[str, Any]] = {
     "manus": {
-        "display_name": "Manus",
         "tools": ["dispatch"],
         "is_entry": True,
         "strip_file_tools": True,
@@ -55,7 +54,6 @@ coder."). Do NOT restate the task, do NOT outline steps.
 """,
     },
     "teamleader": {
-        "display_name": "TeamLeader",
         "tools": ["dispatch", "send_message", "read_mailbox",
                   "whiteboard_write", "whiteboard_read"],
         "is_entry": False,
@@ -86,7 +84,6 @@ do NOT call any other tool. Just stop and wait.
 """,
     },
     "coder": {
-        "display_name": "Coder",
         "tools": [],
         "is_entry": False,
         "strip_file_tools": False,
@@ -98,7 +95,6 @@ read, edit, write, and run files. Return a brief summary of what you changed.
 """,
     },
     "researcher": {
-        "display_name": "Researcher",
         "tools": [],
         "is_entry": False,
         "strip_file_tools": False,
@@ -138,7 +134,6 @@ class AgentLoader:
             # write agent.yaml (without the prompt body — it's in prompt.md)
             yaml_data = {
                 "name": name,
-                "display_name": cfg["display_name"],
                 "prompt_file": "prompt.md",
                 "tools": cfg["tools"],
                 "skills": [],
@@ -183,7 +178,6 @@ class AgentLoader:
                     prompt = prompt_path.read_text(encoding="utf-8")
                 # build the config entry (same shape as old AGENT_CONFIGS)
                 cfg: dict[str, Any] = {
-                    "display_name": raw.get("display_name", name),
                     "prompt": prompt,
                     "tools": raw.get("tools", []),
                     "skills": raw.get("skills", []),
@@ -260,7 +254,7 @@ class AgentLoader:
         if name in self._configs:
             self._configs[name]["tools"] = tools
 
-    def create(self, name: str, display_name: str, prompt: str, tools: list[str]) -> dict:
+    def create(self, name: str, prompt: str, tools: list[str]) -> dict:
         """Create a new agent on disk (directory + agent.yaml + prompt.md).
 
         Raises ValueError if the name already exists.
@@ -279,7 +273,6 @@ class AgentLoader:
         # write agent.yaml
         yaml_data = {
             "name": name,
-            "display_name": display_name or name,
             "prompt_file": "prompt.md",
             "tools": tools,
             "skills": [],
@@ -294,7 +287,6 @@ class AgentLoader:
         )
         # add to in-memory cache
         self._configs[name] = {
-            "display_name": display_name or name,
             "prompt": prompt or "",
             "tools": tools,
             "skills": [],

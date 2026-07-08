@@ -28,7 +28,6 @@ async def list_agents() -> list[dict]:
     for name, cfg in agent_loader.configs.items():
         result.append({
             "name": name,
-            "display_name": cfg.get("display_name", name),
             "tools": cfg.get("tools", []),
             "skills": cfg.get("skills", []),
             "sub_agents": cfg.get("sub_agents", []),
@@ -64,7 +63,6 @@ async def get_agent(name: str) -> dict:
         raise HTTPException(status_code=404, detail="agent not found")
     return {
         "name": name,
-        "display_name": cfg.get("display_name", name),
         "prompt": cfg.get("prompt", ""),
         "tools": cfg.get("tools", []),
         "skills": cfg.get("skills", []),
@@ -82,7 +80,6 @@ class UpdateAgentBody(BaseModel):
 
 class CreateAgentBody(BaseModel):
     name: str
-    display_name: str | None = None
     prompt: str = ""
     tools: list[str] = []
 
@@ -92,7 +89,7 @@ class CreateAgentBody(BaseModel):
 async def create_agent(body: CreateAgentBody) -> dict:
     """Create a new agent on disk."""
     try:
-        agent_loader.create(body.name, body.display_name or body.name, body.prompt, body.tools)
+        agent_loader.create(body.name, body.prompt, body.tools)
         return {"ok": True, "name": body.name.lower()}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
