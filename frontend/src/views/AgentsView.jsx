@@ -33,7 +33,7 @@ export const AgentsView = observer(function AgentsView() {
   }
 
   if (createMode) {
-    return <AgentDetail mode="create" onBack={() => { setCreateMode(false); agentStore.clearCurrent(); }} />;
+    return <CreateAgent onBack={() => { setCreateMode(false); agentStore.loadTools(); }} onCreated={(name) => { setCreateMode(false); setSelected(name); agentStore.selectAgent(name); }} />;
   }
 
   if (agentStore.loading) return <Centered>Loading…</Centered>;
@@ -273,6 +273,142 @@ function TabBtn({ active, onClick, icon, children }) {
 function Badge({ children, color }) {
   return <span className={cn("rounded-sm px-1.5 py-0.5 text-[9px]", color === "accent" ? "bg-accent/15 text-accent" : "bg-muted/30 text-muted-foreground")}>{children}</span>;
 }
+
+// ─── Create new agent form ──────────────────────────────────────────────────
+
+const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
+  const { agentStore: s } = useStore();
+  const [name, setName] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [selectedTools, setSelectedTools] = useState(new Set());
+
+  useEffect(() => { s.loadTools(); }, [s]);
+
+  const toggleTool = (toolName) => {
+    setSelectedTools((prev) => {
+      const next = new Set(prev);
+      if (next.has(toolName)) next.delete(toolName);
+      else next.add(toolName);
+      return next;
+    });
+  };
+
+  const handleCreate = async () => {
+    if (!name.trim()) return;
+    const ok = await s.create(name.trim(), displayName.trim() || name.trim(), prompt, [...selectedTools]);
+    if (ok) onCreated(name.trim().toLowerCase());
+  };
+
+  return (
+    <div className="flex h-full">
+      {s.toast && <Toast {...s.toast} />}
+      {/* left sidebar */}
+      <div className="flex w-56 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
+        <button onClick={onBack} className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:text-foreground">
+          <ChevronLeft className="size-4" />
+          Agents
+        </button>
+        <div className="px-4 py-2">
+          <div className="flex items-center gap-2">
+            <div className="flex size-9 items-center justify-center rounded-lg bg-accent/10">
+              <Plus className="size-4.5 text-accent" />
+            </div>
+            <div className="text-sm font-medium">New Agent</div>
+          </div>
+        </div>
+        <div className="mt-auto p-3">
+          <button
+            onClick={handleCreate}
+            disabled={!name.trim() || s.saving}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent/15 px-3 py-2 text-[13px] text-accent transition hover:bg-accent/25 disabled:opacity-50"
+          >
+            <Save className="size-3.5" />
+            {s.saving ? "Creating…" : "Create"}
+          </button>
+        </div>
+      </div>
+
+      {/* right content */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-2xl space-y-6 px-6 py-6">
+          {/* name fields */}
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-muted-foreground">Agent Name (unique, lowercase)</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. code_reviewer"
+                className="w-full rounded-lg border border-border/60 bg-sidebar/30 px-3 py-2 text-[13px] outline-none focus:border-accent/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-muted-foreground">Display Name</label>
+              <input
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="e.g. Code Reviewer"
+                className="w-full rounded-lg border border-border/60 bg-sidebar/30 px-3 py-2 text-[13px] outline-none focus:border-accent/40"
+              />
+            </div>
+          </div>
+
+          {/* prompt */}
+          <div>
+            <label className="mb-2 block text-[12px] font-medium text-muted-foreground">System Prompt</label>
+            <MDEditor
+              value={prompt}
+              onChange={(val) => setPrompt(val || "")}
+              height={300}
+              preview="live"
+              data-color-mode="dark"
+            />
+          </div>
+
+          {/* tools */}
+          <div>
+            <label className="mb-2 block text-[12px] font-medium text-muted-foreground">Tools</label>
+            <div className="space-y-1.5">
+              {s.tools.map((tool) => {
+                const checked = selectedTools.has(tool.name);
+                return (
+                  <button
+                    key={tool.name}
+                    onClick={() => toggleTool(tool.name)}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
+                      checked ? "border-accent/30 bg-accent/5" : "border-border/40 hover:border-border/80",
+                    )}
+                  >
+                    <div className={cn(
+                      "flex size-5 shrink-0 items-center justify-center rounded border",
+                      checked ? "border-accent bg-accent" : "border-border/60",
+                    )}>
+                      {checked && <Check className="size-3 text-accent-foreground" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[13px] font-medium">{tool.name}</span>
+                        <span className={cn(
+                          "rounded-sm px-1 py-0.5 text-[9px]",
+                          tool.source === "user" ? "bg-accent/10 text-accent" : "bg-muted/20 text-muted-foreground",
+                        )}>
+                          {tool.source}
+                        </span>
+                      </div>
+                      <p className="truncate text-[11px] text-muted-foreground">{tool.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
 
 function Centered({ children }) {
   return <div className="flex h-full items-center justify-center"><p className="text-sm text-muted-foreground">{children}</p></div>;

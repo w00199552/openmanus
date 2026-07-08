@@ -80,6 +80,24 @@ class UpdateAgentBody(BaseModel):
     tools: list[str] | None = None
 
 
+class CreateAgentBody(BaseModel):
+    name: str
+    display_name: str | None = None
+    prompt: str = ""
+    tools: list[str] = []
+
+
+@router.post("")
+@router.post("/", include_in_schema=False)
+async def create_agent(body: CreateAgentBody) -> dict:
+    """Create a new agent on disk."""
+    try:
+        agent_loader.create(body.name, body.display_name or body.name, body.prompt, body.tools)
+        return {"ok": True, "name": body.name.lower()}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.put("/{name}")
 async def update_agent(name: str, body: UpdateAgentBody) -> dict:
     """Update an agent's prompt and/or tools (writes to disk)."""
@@ -93,3 +111,13 @@ async def update_agent(name: str, body: UpdateAgentBody) -> dict:
     if body.tools is not None:
         agent_loader.save_tools(name, body.tools)
     return {"ok": True, "name": name}
+
+
+@router.delete("/{name}")
+async def delete_agent(name: str) -> dict:
+    """Delete a custom agent (built-in agents cannot be deleted)."""
+    try:
+        agent_loader.delete(name)
+        return {"ok": True, "name": name}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

@@ -104,4 +104,44 @@ export class AgentStore {
     }
     runInAction(() => { this.saving = false; });
   }
+
+  /** Create a new agent on disk. Returns true on success. */
+  async create(name, displayName, prompt, tools) {
+    this.saving = true;
+    try {
+      const res = await fetch(`${BACKEND}/agents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, display_name: displayName, prompt, tools }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `create failed: ${res.status}`);
+      }
+      await this.loadAgents();
+      this._showToast("success", `Agent "${name}" created`);
+      return true;
+    } catch (e) {
+      this._showToast("error", e.message || "Create failed");
+      return false;
+    }
+    runInAction(() => { this.saving = false; });
+  }
+
+  /** Delete a custom agent. Returns true on success. */
+  async remove(name) {
+    try {
+      const res = await fetch(`${BACKEND}/agents/${encodeURIComponent(name)}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `delete failed: ${res.status}`);
+      }
+      await this.loadAgents();
+      this._showToast("success", `Agent "${name}" deleted`);
+      return true;
+    } catch (e) {
+      this._showToast("error", e.message || "Delete failed");
+      return false;
+    }
+  }
 }

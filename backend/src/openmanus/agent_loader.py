@@ -260,6 +260,66 @@ class AgentLoader:
         if name in self._configs:
             self._configs[name]["tools"] = tools
 
+    def create(self, name: str, display_name: str, prompt: str, tools: list[str]) -> dict:
+        """Create a new agent on disk (directory + agent.yaml + prompt.md).
+
+        Raises ValueError if the name already exists.
+        """
+        name = name.lower().strip()
+        if not name:
+            raise ValueError("agent name cannot be empty")
+        if name in self._configs:
+            raise ValueError(f"agent '{name}' already exists")
+        d = self._dir / name
+        if d.exists():
+            raise ValueError(f"directory '{d}' already exists")
+        d.mkdir(parents=True, exist_ok=True)
+        # write prompt.md
+        (d / "prompt.md").write_text(prompt or "", encoding="utf-8")
+        # write agent.yaml
+        yaml_data = {
+            "name": name,
+            "display_name": display_name or name,
+            "prompt_file": "prompt.md",
+            "tools": tools,
+            "skills": [],
+            "sub_agents": [],
+            "is_entry": False,
+            "strip_file_tools": False,
+            "allowed_tools": [],
+        }
+        (d / "agent.yaml").write_text(
+            yaml.dump(yaml_data, default_flow_style=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+        # add to in-memory cache
+        self._configs[name] = {
+            "display_name": display_name or name,
+            "prompt": prompt or "",
+            "tools": tools,
+            "skills": [],
+            "sub_agents": [],
+            "is_entry": False,
+            "strip_file_tools": False,
+            "allowed_tools": set(),
+        }
+        logger.info("created agent: %s", name)
+        return self._configs[name]
+
+    def delete(self, name: str) -> None:
+        """Delete an agent directory (not for built-in agents)."""
+        if name in ("manus", "teamleader"):
+            raise ValueError(f"cannot delete built-in agent '{name}'")
+        cfg = self._configs.get(name)
+        if not cfg:
+            raise ValueError(f"agent '{name}' not found")
+        d = self._agent_dir(name)
+        if d.exists():
+            import shutil
+            shutil.rmtree(d)
+        self._configs.pop(name, None)
+        logger.info("deleted agent: %s", name)
+
     @property
     def configs(self) -> dict[str, dict[str, Any]]:
         return self._configs
