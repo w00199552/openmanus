@@ -1,86 +1,109 @@
 import {observer} from "mobx-react-lite";
 import {useEffect, useState, useCallback} from "react";
 import {
-  Sparkles, ChevronLeft, ChevronRight, ChevronDown, FileText, FileCode,
-  File, Folder, FolderOpen, Loader2,
+  Wrench, ChevronLeft, ChevronRight, ChevronDown, FileText, FileCode,
+  File, Folder, FolderOpen, Loader2, Lock,
 } from "lucide-react";
 import MDEditor from "@uiw/react-md-editor";
 import {Highlight, themes} from "prism-react-renderer";
 
-import {useStore} from "@/hooks/useStore";
-import {listSkills, getSkillTree, getSkillFile} from "@/services/agentService";
 import {cn} from "@/lib/utils";
 
 const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
 
 /**
- * SkillsView — card grid → click → file tree + content preview.
+ * ToolsView — card grid (builtin + user) → click → file tree + content preview.
+ * Builtin tools show metadata only (no files). User tools show file tree.
  */
-export const SkillsView = observer(function SkillsView() {
-  const {skillStore} = useStore();
+export const ToolsView = observer(function ToolsView() {
+  const [tools, setTools] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
 
-  useEffect(() => { skillStore.loadSkills(); }, [skillStore]);
+  useEffect(() => {
+    fetch(`${BACKEND}/tools-api`)
+      .then((r) => r.json())
+      .then((data) => { setTools(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (loading) return <Centered>Loading tools…</Centered>;
 
   if (selected) {
-    return <SkillDetail name={selected} onBack={() => setSelected(null)} />;
+    return <ToolDetail name={selected} onBack={() => setSelected(null)} />;
   }
 
-  if (skillStore.loading) return <Centered>Loading skills…</Centered>;
+  const builtin = tools.filter((t) => t.source === "builtin");
+  const user = tools.filter((t) => t.source === "user");
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-6 flex items-center gap-2">
-          <Sparkles className="size-5 text-accent" />
-          <h1 className="text-lg font-semibold">Skills</h1>
-          <span className="text-sm text-muted-foreground">({skillStore.skills.length})</span>
+          <Wrench className="size-5 text-accent" />
+          <h1 className="text-lg font-semibold">Tools</h1>
+          <span className="text-sm text-muted-foreground">({tools.length})</span>
         </div>
 
-        {skillStore.skills.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/40 p-12 text-center">
-            <Sparkles className="mx-auto mb-3 size-8 text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">No skills installed.</p>
-            <p className="mt-1 text-[12px] text-muted-foreground/60">Copy skill directories to ~/.openmanus/skills/</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {skillStore.skills.map((s) => (
-              <SkillCard key={s.name} skill={s} onClick={() => setSelected(s.name)} />
-            ))}
-          </div>
+        {builtin.length > 0 && (
+          <>
+            <SectionTitle>Built-in</SectionTitle>
+            <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {builtin.map((t) => (
+                <ToolCard key={t.name} tool={t} onClick={() => setSelected(t.name)} />
+              ))}
+            </div>
+          </>
+        )}
+
+        {user.length > 0 && (
+          <>
+            <SectionTitle>Custom</SectionTitle>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {user.map((t) => (
+                <ToolCard key={t.name} tool={t} onClick={() => setSelected(t.name)} />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>
   );
 });
 
-// ─── Skill detail: file tree + content ──────────────────────────────────────
+// ─── Tool detail ────────────────────────────────────────────────────────────
 
-function SkillDetail({name, onBack}) {
+function ToolDetail({name, onBack}) {
   const [tree, setTree] = useState(null);
-  const [file, setFile] = useState(null);     // {path, content, file_type}
+  const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(new Set());
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    getSkillTree(name).then((data) => {
-      setTree(data);
-      // auto-expand root + expand first dir level
-      const dirs = new Set();
-      collectDirs(data, dirs);
-      setExpanded(dirs);
-      setLoading(false);
-      // auto-select SKILL.md
-      const skillMd = findFile(data, "SKILL.md");
-      if (skillMd) loadFile(skillMd.path);
-    }).catch(() => setLoading(false));
+    setNotFound(false);
+    fetch(`${BACKEND}/tools-api/${encodeURIComponent(name)}/tree`)
+      .then((r) => {
+        if (!r.ok) throw new Error("not found");
+        return r.json();
+      })
+      .then((data) => {
+        setTree(data);
+        const dirs = new Set();
+        collectDirs(data, dirs);
+        setExpanded(dirs);
+        setLoading(false);
+        const yaml = findFile(data, "tool.yaml");
+        if (yaml) loadFile(yaml.path);
+      })
+      .catch(() => { setNotFound(true); setLoading(false); });
   }, [name]);
 
   const loadFile = useCallback(async (path) => {
     try {
-      const f = await getSkillFile(name, path);
+      const res = await fetch(`${BACKEND}/tools-api/${encodeURIComponent(name)}/file?path=${encodeURIComponent(path)}`);
+      const f = await res.json();
       setFile(f);
     } catch { /* ignore */ }
   }, [name]);
@@ -96,17 +119,43 @@ function SkillDetail({name, onBack}) {
 
   if (loading) return <Centered><Loader2 className="size-4 animate-spin" /> Loading…</Centered>;
 
+  // Builtin tool: no files, show metadata only
+  if (notFound) {
+    return (
+      <div className="flex h-full">
+        <div className="flex w-60 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
+          <button onClick={onBack} className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:text-foreground">
+            <ChevronLeft className="size-4" /> Tools
+          </button>
+          <div className="px-4 py-2">
+            <div className="flex items-center gap-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-accent/10">
+                <Lock className="size-4 text-muted-foreground/50" />
+              </div>
+              <span className="text-sm font-medium">{name}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-1 items-center justify-center">
+          <div className="text-center">
+            <Lock className="mx-auto mb-3 size-8 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">Built-in tool — no source files to browse.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full">
-      {/* left: file tree */}
       <div className="flex w-60 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
         <button onClick={onBack} className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:text-foreground">
-          <ChevronLeft className="size-4" /> Skills
+          <ChevronLeft className="size-4" /> Tools
         </button>
         <div className="px-4 py-2">
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-lg bg-accent/10">
-              <Sparkles className="size-4 text-accent" />
+              <Wrench className="size-4 text-accent" />
             </div>
             <span className="text-sm font-medium">{name}</span>
           </div>
@@ -116,7 +165,6 @@ function SkillDetail({name, onBack}) {
         </div>
       </div>
 
-      {/* right: file content */}
       <div className="min-h-0 flex-1 overflow-hidden">
         <div className="flex h-full flex-col">
           {file ? (
@@ -139,13 +187,12 @@ function SkillDetail({name, onBack}) {
   );
 }
 
-// ─── Tree node (recursive) ──────────────────────────────────────────────────
+// ─── Shared components (same as SkillsView) ─────────────────────────────────
 
 function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth}) {
   const isDir = node.type === "dir";
   const isOpen = expanded.has(node.path);
 
-  // Root node: render children directly (no indent)
   if (depth === 0 && isDir) {
     return (
       <div>
@@ -195,28 +242,18 @@ function FileIcon({name}) {
   return <File className="size-3 shrink-0 text-muted-foreground/40" />;
 }
 
-// ─── File content renderer ──────────────────────────────────────────────────
-
 function FileContent({file}) {
   if (file.file_type === "markdown") {
     return (
       <div className="h-full" data-color-mode="dark">
-        <MDEditor
-          value={file.content}
-          height="100%"
-          preview="live"
-          data-color-mode="dark"
-          style={{height: "100%"}}
-        />
+        <MDEditor value={file.content} height="100%" preview="live" data-color-mode="dark" style={{height: "100%"}} />
       </div>
     );
   }
-
   if (file.file_type === "code") {
     const ext = file.name.split(".").pop()?.toLowerCase() || "text";
-    const langMap = {py: "python", js: "javascript", jsx: "jsx", ts: "typescript", tsx: "tsx", sh: "bash", json: "json", yaml: "yaml", yml: "yaml", css: "css", html: "markup", sql: "sql"};
+    const langMap = {py: "python", js: "javascript", jsx: "jsx", ts: "typescript", tsx: "tsx", sh: "bash", json: "json", yaml: "yaml", yml: "yaml", css: "css"};
     const lang = langMap[ext] || "text";
-
     return (
       <Highlight theme={themes.vsDark} code={file.content} language={lang}>
         {({className, style, tokens, getLineProps, getTokenProps}) => (
@@ -235,31 +272,34 @@ function FileContent({file}) {
       </Highlight>
     );
   }
-
-  // plain text
   return <pre className="p-4 text-[12px] leading-relaxed text-muted-foreground/80">{file.content}</pre>;
 }
 
-// ─── Card + helpers ─────────────────────────────────────────────────────────
-
-function SkillCard({skill, onClick}) {
+function ToolCard({tool, onClick}) {
   return (
     <button onClick={onClick} className="group rounded-xl border border-border/60 bg-card p-4 text-left transition hover:border-accent/40 hover:bg-sidebar/30">
       <div className="mb-3 flex items-center gap-3">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-          <Sparkles className="size-5 text-accent" />
+          {tool.source === "builtin" ? <Lock className="size-4 text-muted-foreground/50" /> : <Wrench className="size-5 text-accent" />}
         </div>
         <div className="min-w-0">
-          <span className="truncate text-sm font-medium">{skill.name}</span>
-          <div className="mt-0.5 flex gap-1">
-            {skill.has_scripts && <span className="rounded-sm bg-accent/10 px-1.5 py-0.5 text-[9px] text-accent">scripts</span>}
-            {skill.has_references && <span className="rounded-sm bg-muted/20 px-1.5 py-0.5 text-[9px] text-muted-foreground">refs</span>}
+          <div className="flex items-center gap-1">
+            <span className="truncate text-sm font-medium">{tool.name}</span>
+          </div>
+          <div className="mt-0.5">
+            <span className={cn("rounded-sm px-1.5 py-0.5 text-[9px]", tool.source === "user" ? "bg-accent/10 text-accent" : "bg-muted/20 text-muted-foreground")}>
+              {tool.source}
+            </span>
           </div>
         </div>
       </div>
-      <p className="line-clamp-2 text-[11px] text-muted-foreground/70">{skill.description || "(no description)"}</p>
+      <p className="line-clamp-2 text-[11px] text-muted-foreground/70">{tool.description || "(no description)"}</p>
     </button>
   );
+}
+
+function SectionTitle({children}) {
+  return <div className="mb-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">{children}</div>;
 }
 
 function collectDirs(node, dirs) {

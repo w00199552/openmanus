@@ -35,7 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .agent_factory import build_entry_agent
 from .agent_loader import agent_loader
-from .api import agents, sessions, skills, streams
+from .api import agents, sessions, skills, streams, tools
 from .api.sessions import workdir_router
 from .config import settings
 from .db import init_db, session_store
@@ -96,6 +96,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(agents.router)
     app.include_router(skills.router)
+    app.include_router(tools.router)
     app.include_router(workdir_router)
     return app
 
