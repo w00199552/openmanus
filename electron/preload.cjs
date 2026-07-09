@@ -1,8 +1,13 @@
-const { contextBridge } = require("electron");
+const {contextBridge, ipcRenderer} = require("electron");
 
-// preload: expose safe APIs to the renderer (frontend) via window.electron
-// Add more as needed (file dialogs, clipboard, etc.)
+// Expose window control APIs to the renderer
 contextBridge.exposeInMainWorld("electron", {
   platform: process.platform,
   isElectron: true,
+  window: {
+    minimize: () => ipcRenderer.invoke("window:minimize"),
+    maximizeToggle: () => ipcRenderer.invoke("window:maximize"),
+    close: () => ipcRenderer.invoke("window:close"),
+    isMaximized: () => ipcRenderer.invoke("window:isMaximized"),
+  },
 });

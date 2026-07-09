@@ -1,7 +1,6 @@
-const { app, BrowserWindow } = require("electron");
+const {app, BrowserWindow, ipcMain} = require("electron");
 const path = require("path");
 
-// isDev: 开发环境（未打包）= true；生产环境（打包后）= false
 const isDev = !app.isPackaged;
 
 let mainWindow;
@@ -12,6 +11,8 @@ function createWindow() {
     height: 900,
     minWidth: 900,
     minHeight: 600,
+    frame: false,          // 去掉默认白色标题栏
+    titleBarStyle: "hidden",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -20,11 +21,9 @@ function createWindow() {
   });
 
   if (isDev) {
-    // 开发环境：渲染 vite dev server
     mainWindow.loadURL("http://localhost:5173");
     mainWindow.webContents.openDevTools();
   } else {
-    // 生产环境：渲染前端打包的 index.html
     mainWindow.loadFile(path.join(__dirname, "..", "frontend", "dist", "index.html"));
   }
 
@@ -32,6 +31,29 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// IPC: window controls (called from preload → renderer)
+ipcMain.handle("window:minimize", () => {
+  mainWindow?.minimize();
+});
+
+ipcMain.handle("window:maximize", () => {
+  if (mainWindow?.isMaximized()) {
+    mainWindow.unmaximize();
+    return false;
+  } else {
+    mainWindow?.maximize();
+    return true;
+  }
+});
+
+ipcMain.handle("window:close", () => {
+  mainWindow?.close();
+});
+
+ipcMain.handle("window:isMaximized", () => {
+  return mainWindow?.isMaximized() || false;
+});
 
 app.whenReady().then(() => {
   createWindow();

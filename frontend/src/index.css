@@ -129,6 +129,16 @@ input::placeholder {
   opacity: 0.6 !important;
 }
 
+  /* Electron: make elements with appRegion:drag actually draggable */
+  [style*="app-region: drag"],
+  [style*="appRegion: drag"] {
+    -webkit-app-region: drag;
+  }
+  [style*="app-region: no-drag"],
+  [style*="appRegion: no-drag"] {
+    -webkit-app-region: no-drag;
+  }
+
   /* monospace utility — agent output, code, status (JetBrains Mono) */
   .font-mono,
   code,
