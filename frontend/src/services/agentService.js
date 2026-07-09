@@ -27,7 +27,21 @@ export async function listTools() {
 
 /** List all available skills. */
 export async function listSkills() {
-  const res = await fetch(`${BACKEND}/agents/meta/skills`);
+  const res = await fetch(`${BACKEND}/skills`);
   if (!res.ok) throw new Error(`listSkills: ${res.status}`);
+  return res.json();
+}
+
+/** Get the file tree of a skill. */
+export async function getSkillTree(name) {
+  const res = await fetch(`${BACKEND}/skills/${encodeURIComponent(name)}/tree`);
+  if (!res.ok) throw new Error(`getSkillTree: ${res.status}`);
+  return res.json();
+}
+
+/** Read a single file from a skill. */
+export async function getSkillFile(name, path) {
+  const res = await fetch(`${BACKEND}/skills/${encodeURIComponent(name)}/file?path=${encodeURIComponent(path)}`);
+  if (!res.ok) throw new Error(`getSkillFile: ${res.status}`);
   return res.json();
 }
