@@ -17,7 +17,7 @@ export const AgentsView = observer(function AgentsView() {
     const [createMode, setCreateMode] = useState(false);
 
     useEffect(() => {
-        agentStore.loadAgents();
+        agentStore.loadAgents().then();
     }, [agentStore]);
 
     const builtinAgents = agentStore.agents.filter((a) => a.is_builtin);
