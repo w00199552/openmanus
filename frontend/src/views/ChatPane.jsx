@@ -1,5 +1,6 @@
 import {observer} from "mobx-react-lite";
-import {useEffect} from "react";
+import {useEffect, useState} from "react";
+import {PanelRightClose, PanelRightOpen} from "lucide-react";
 
 import {useStore} from "@/hooks/useStore";
 import {ThreadView} from "@/components/chat/ThreadView";
@@ -14,8 +15,8 @@ import {TooltipProvider} from "@/components/ui/tooltip";
  * active session rebinds the runtime's live subscription; the runtime owns all
  * streaming state, this component just reads observables + forwards actions.
  */
-export const ChatPane = observer(function ChatPane() {
-  const { sessions, runtime } = useStore();
+export const ChatPane = observer(function ChatPane({onToggleCollapse}) {
+  const {sessions, runtime} = useStore();
   const active = sessions.active;
   const sessionId = active?.id;
   const isTeam = active?.kind === "team";
@@ -64,6 +65,13 @@ export const ChatPane = observer(function ChatPane() {
           <span className="ml-auto text-[11px] text-muted-foreground">
             {runtime.isRunning ? "thinking…" : "1:1"}
           </span>
+          <button
+            onClick={() => onToggleCollapse?.()}
+            className="ml-1 rounded-md p-1 text-muted-foreground transition hover:bg-card hover:text-foreground"
+            title="Collapse chat"
+          >
+            <PanelRightClose className="size-3.5"/>
+          </button>
         </div>
 
         {/* messages: the runtime's activeMessages (single session or team merge) */}

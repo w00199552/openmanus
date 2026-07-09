@@ -1,6 +1,7 @@
 import {observer} from "mobx-react-lite";
 import {useEffect, useState} from "react";
 import {Group, Panel, Separator} from "react-resizable-panels";
+import {PanelRightOpen} from "lucide-react";
 import {TopNav} from "@/components/TopNav";
 import {SessionList} from "@/views/SessionList";
 import {ChatPane} from "@/views/ChatPane";
@@ -51,6 +52,7 @@ function loadLayout(key, fallback) {
  */
 export const Workspace = observer(function Workspace() {
   const [activeView, setActiveView] = useState("chat");
+  const [chatCollapsed, setChatCollapsed] = useState(() => localStorage.getItem("openmanus.chat.collapsed") === "true");
   const [leftLayout, setLeftLayout] = useState(() =>
     loadLayout(LAYOUT_LEFT, [16, 84]),
   );
@@ -101,24 +103,32 @@ export const Workspace = observer(function Workspace() {
         onLayoutChanged={(l) => setMainLayout(l)}
       >
         {/* ── LEFT HALF: list | chat ─────────────────────────────────── */}
-        <Panel id="left" defaultSize="50%" minSize="30%">
-          <Group
-            orientation="horizontal"
-            className="flex h-full"
-            style={{ flexDirection: "row" }}
-            defaultLayout={leftLayout}
-            onLayoutChanged={(l) => setLeftLayout(l)}
-          >
-            <Panel id="list" minSize="10%" maxSize="45%">
-              <SessionList />
-            </Panel>
-            <Separator className="sep-bar relative w-1.5 cursor-col-resize">
-              <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
-            </Separator>
-            <Panel id="chat" minSize="30%">
-              <ChatPane />
-            </Panel>
-          </Group>
+        <Panel id="left" defaultSize="50%" minSize="20%">
+          <div className="flex h-full" style={{ flexDirection: "row" }}>
+            {/* SessionList always visible (narrow strip when collapsed) */}
+            <div className={chatCollapsed ? "w-14 shrink-0 overflow-hidden" : "min-w-0 flex-1"}>
+              {chatCollapsed && (
+                <button
+                  onClick={() => { localStorage.setItem("openmanus.chat.collapsed", "false"); setChatCollapsed(false); }}
+                  className="absolute right-1 top-0.5 z-10 rounded-md p-1 text-muted-foreground transition hover:bg-card hover:text-foreground"
+                  title="Expand chat"
+                >
+                  <PanelRightOpen className="size-3.5"/>
+                </button>
+              )}
+              <SessionList collapsed={chatCollapsed} />
+            </div>
+            {!chatCollapsed && (
+              <>
+                <div className="sep-bar relative w-1.5 shrink-0 cursor-col-resize">
+                  <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
+                </div>
+                <div className="min-w-0 flex-[3]">
+                  <ChatPane onToggleCollapse={() => setChatCollapsed(true)} />
+                </div>
+              </>
+            )}
+          </div>
         </Panel>
 
         <Separator className="sep-bar relative w-1.5 cursor-col-resize">

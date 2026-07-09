@@ -20,13 +20,40 @@ import {cn} from "@/lib/utils";
  * overlapping faces for a team. A top search box filters by title + preview.
  * Running sessions show a spinner; unread shows a red badge.
  */
-export const SessionList = observer(function SessionList() {
+export const SessionList = observer(function SessionList({collapsed = false}) {
   const { sessions } = useStore();
   const [query, setQuery] = useState("");
 
   useEffect(() => {
     sessions.load();
   }, [sessions]);
+
+  // Collapsed mode: narrow strip showing only avatars
+  if (collapsed) {
+    const all = [...sessions.rootSessions, ...sessions.taskSessions];
+    return (
+      <div className="flex h-full flex-col items-center gap-1 overflow-y-auto bg-card py-3">
+        {all.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => sessions.select(s.id)}
+            className="relative shrink-0 rounded-lg p-1 transition hover:bg-sidebar/40"
+            title={s.title || s.id.slice(0, 12)}
+          >
+            <SessionAvatar session={s} size={32} />
+            {s.id === sessions.activeId && (
+              <span className="absolute -left-0.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-accent" />
+            )}
+            {sessions.unreadCount(s.id) > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 size-3.5 rounded-full bg-destructive text-[8px] font-bold text-white flex items-center justify-center">
+                {sessions.unreadCount(s.id)}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+    );
+  }
 
   // filter both groups by the search query (title + preview)
   const match = (s) => {
