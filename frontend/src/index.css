@@ -110,19 +110,6 @@
        dark mode, matching the canvas. Stops the team @-selector option list
        from popping up in a jarring light theme. */
     color-scheme: dark;
-  }
-
-  /* Placeholder color fallback (Electron sometimes doesn't resolve the
-     Tailwind placeholder:text-muted-foreground CSS variable chain). */
-  ::placeholder {
-    color: hsl(240 4% 45%);
-    opacity: 0.5;
-  }
-  textarea::placeholder,
-  input::placeholder {
-    color: hsl(240 4% 45%) !important;
-    opacity: 0.5 !important;
-  }
     /* Geist for UI chrome */
     font-family:
       "Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -130,6 +117,17 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+}
+
+/* Placeholder color — outside @layer base so it has higher priority than
+   Tailwind's generated placeholder utilities. Uses a fixed color (not a CSS
+   variable) so it works in Electron where var() chains sometimes break. */
+::placeholder,
+textarea::placeholder,
+input::placeholder {
+  color: #6b6b72 !important;
+  opacity: 0.6 !important;
+}
 
   /* monospace utility — agent output, code, status (JetBrains Mono) */
   .font-mono,
