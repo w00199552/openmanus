@@ -6,6 +6,7 @@ import {SessionList} from "@/views/SessionList";
 import {ChatPane} from "@/views/ChatPane";
 import {Playground} from "@/views/Playground";
 import {AgentsView} from "@/views/AgentsView";
+import {SkillsView} from "@/views/SkillsView";
 
 // localStorage keys for persisted panel layouts (survive session switches).
 const LAYOUT_LEFT = "openmanus.layout.left"; // list | chat  (inside left half)
@@ -72,6 +73,13 @@ export const Workspace = observer(function Workspace() {
       {activeView === "agents" && (
         <div className="min-h-0 flex-1">
           <AgentsView />
+        </div>
+      )}
+
+      {/* Skills view: full-width, no panels */}
+      {activeView === "skills" && (
+        <div className="min-h-0 flex-1">
+          <SkillsView />
         </div>
       )}
 

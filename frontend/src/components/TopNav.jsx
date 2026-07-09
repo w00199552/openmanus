@@ -7,7 +7,7 @@ const NAV_ITEMS = [
   { key: "chat", label: "Chat", active: true },
   { key: "agents", label: "Agents", active: true },
   { key: "wiki", label: "Wiki" },
-  { key: "skills", label: "Skills" },
+  { key: "skills", label: "Skills", active: true },
   { key: "tools", label: "Tools" },
   { key: "dashboard", label: "Dashboard" },
   { key: "docs", label: "Docs" },
