@@ -33,6 +33,7 @@ class SkillInfo(BaseModel):
 class AgentSummary(BaseModel):
     """Agent metadata for the list view (no prompt body)."""
     name: str
+    description: str = ""
     tools: list[str] = []
     skills: list[str] = []
     sub_agents: list[str] = []
@@ -45,6 +46,7 @@ class AgentSummary(BaseModel):
 class AgentDetail(BaseModel):
     """Full agent config (including prompt text)."""
     name: str
+    description: str = ""
     prompt: str = ""
     tools: list[str] = []
     skills: list[str] = []
@@ -57,10 +59,12 @@ class UpdateAgentBody(BaseModel):
     prompt: str | None = None
     tools: list[str] | None = None
     skills: list[str] | None = None
+    description: str | None = None
 
 
 class CreateAgentBody(BaseModel):
     name: str
+    description: str = ""
     prompt: str = ""
     tools: list[str] = []
     skills: list[str] = []
@@ -86,6 +90,7 @@ async def list_agents() -> list[AgentSummary]:
     for name, cfg in agent_loader.configs.items():
         result.append(AgentSummary(
             name=name,
+            description=cfg.get("description", ""),
             tools=cfg.get("tools", []),
             skills=cfg.get("skills", []),
             sub_agents=cfg.get("sub_agents", []),
@@ -134,6 +139,7 @@ async def get_agent(name: str) -> AgentDetail:
         raise HTTPException(status_code=404, detail="agent not found")
     return AgentDetail(
         name=name,
+        description=cfg.get("description", ""),
         prompt=cfg.get("prompt", ""),
         tools=cfg.get("tools", []),
         skills=cfg.get("skills", []),
@@ -148,7 +154,7 @@ async def get_agent(name: str) -> AgentDetail:
 async def create_agent(body: CreateAgentBody) -> dict:
     """Create a new agent on disk."""
     try:
-        agent_loader.create(body.name, body.prompt, body.tools)
+        agent_loader.create(body.name, body.prompt, body.tools, body.description)
         if body.skills:
             agent_loader.save_skills(body.name.strip(), body.skills)
         return {"ok": True, "name": body.name.strip()}
@@ -169,6 +175,8 @@ async def update_agent(name: str, body: UpdateAgentBody) -> dict:
         agent_loader.save_tools(name, body.tools)
     if body.skills is not None:
         agent_loader.save_skills(name, body.skills)
+    if body.description is not None:
+        agent_loader.save_description(name, body.description)
     return {"ok": True, "name": name}
 
 

@@ -20,6 +20,7 @@ export class AgentStore {
 
     // edit drafts
     promptDraft = "";
+    descriptionDraft = "";
     toolDraft = new Set();
     skillDraft = new Set();
 
@@ -87,6 +88,7 @@ export class AgentStore {
                 this.tools = tools;
                 this.skills = skills;
                 this.promptDraft = agent.prompt || "";
+                this.descriptionDraft = agent.description || "";
                 this.toolDraft = new Set(agent.tools || []);
                 this.skillDraft = new Set(agent.skills || []);
                 this.loading = false;
@@ -108,6 +110,10 @@ export class AgentStore {
 
     setPromptDraft(text) {
         this.promptDraft = text;
+    }
+
+    setDescriptionDraft(text) {
+        this.descriptionDraft = text;
     }
 
     toggleTool(name) {
@@ -132,6 +138,7 @@ export class AgentStore {
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({
                     prompt: this.promptDraft,
+                    description: this.descriptionDraft,
                     tools: [...this.toolDraft],
                     skills: [...this.skillDraft]
                 }),
@@ -151,13 +158,13 @@ export class AgentStore {
     }
 
     /** Create a new agent on disk. Returns true on success. */
-    async create(name, prompt, tools, skills = []) {
+    async create(name, prompt, tools, skills = [], description = "") {
         this.saving = true;
         try {
             const res = await fetch(`${BACKEND}/agents`, {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({name, prompt, tools}),
+                body: JSON.stringify({name, prompt, tools, skills, description}),
             });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));

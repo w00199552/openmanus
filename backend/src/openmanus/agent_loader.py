@@ -86,6 +86,7 @@ class AgentLoader:
                     prompt = prompt_path.read_text(encoding="utf-8")
                 cfg: dict[str, Any] = {
                     "prompt": prompt,
+                    "description": raw.get("description", ""),
                     "tools": raw.get("tools", []),
                     "skills": raw.get("skills", []),
                     "sub_agents": raw.get("sub_agents", []),
@@ -166,7 +167,24 @@ class AgentLoader:
         if name in self._configs:
             self._configs[name]["skills"] = skills
 
-    def create(self, name: str, prompt: str, tools: list[str]) -> dict:
+    def save_description(self, name: str, description: str) -> None:
+        """Write the description to the agent's agent.yaml file."""
+        d = self._agent_dir(name)
+        yaml_path = d / "agent.yaml"
+        if not yaml_path.exists():
+            return
+        raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            return
+        raw["description"] = description
+        yaml_path.write_text(
+            yaml.dump(raw, default_flow_style=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+        if name in self._configs:
+            self._configs[name]["description"] = description
+
+    def create(self, name: str, prompt: str, tools: list[str], description: str = "") -> dict:
         name = name.strip()
         if not name:
             raise ValueError("agent name cannot be empty")
@@ -179,6 +197,7 @@ class AgentLoader:
         (d / "prompt.md").write_text(prompt or "", encoding="utf-8")
         yaml_data = {
             "name": name,
+            "description": description,
             "prompt_file": "prompt.md",
             "tools": tools,
             "skills": [],

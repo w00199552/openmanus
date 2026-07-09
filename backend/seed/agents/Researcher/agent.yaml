@@ -5,6 +5,7 @@ allowed_tools:
 - glob
 - grep
 name: Researcher
+description: "Investigates the codebase. Read-only — can list, read, search files."
 prompt_file: prompt.md
 skills: []
 strip_file_tools: false

@@ -8,6 +8,7 @@ allowed_tools:
 - grep
 - execute
 name: Coder
+description: "Implements code changes. Can read, write, edit, and run files."
 prompt_file: prompt.md
 skills: []
 strip_file_tools: false

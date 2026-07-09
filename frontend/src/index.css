@@ -149,7 +149,7 @@
   ::-webkit-scrollbar-thumb:hover {
     background: hsl(240 4% 28%);
   }
-}
+
 
 /* ── Resizable panel separators ───────────────────────────────────────────
    react-resizable-panels v4: the drag handle is the Separator itself. We give

@@ -124,6 +124,10 @@ const AgentDetail = observer(function AgentDetail({name, onBack}) {
                 </div>
 
                 <div className="mt-2 flex flex-col gap-0.5 px-2">
+                    <TabBtn active={tab === "info"} onClick={() => setTab("info")}
+                            icon={<Bot className="size-3.5"/>}>
+                        Info
+                    </TabBtn>
                     <TabBtn active={tab === "prompt"} onClick={() => setTab("prompt")}
                             icon={<FileText className="size-3.5"/>}>
                         Prompt
@@ -162,6 +166,26 @@ const AgentDetail = observer(function AgentDetail({name, onBack}) {
             {/* right content */}
             <div className="min-h-0 flex-1 overflow-hidden">
                 <div className="flex h-full flex-col px-6 py-6">
+                    {tab === "info" && (
+                        <div className="space-y-4">
+                            <div>
+                                <label className="mb-1 block text-[12px] font-medium text-muted-foreground">Name</label>
+                                <div className="rounded-lg border border-border/40 bg-sidebar/20 px-3 py-2 text-[13px] text-muted-foreground">{s.current.name}</div>
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-[12px] font-medium text-muted-foreground">Description</label>
+                                <textarea
+                                    value={s.descriptionDraft}
+                                    onChange={(e) => isBuiltin ? null : s.setDescriptionDraft(e.target.value)}
+                                    readOnly={isBuiltin}
+                                    placeholder="Describe what this agent does and when to use it..."
+                                    className="min-h-[80px] w-full resize-y rounded-lg border border-border/60 bg-sidebar/30 px-3 py-2 text-[13px] outline-none focus:border-accent/40"
+                                />
+                                <p className="mt-1 text-[11px] text-muted-foreground/60">Used by Manus/TeamLeader to decide when to dispatch to this agent.</p>
+                            </div>
+                        </div>
+                    )}
+
                     {tab === "prompt" && (
                         <div className="flex h-full flex-col">
                             <h2 className="mb-3 shrink-0 text-sm font-medium">System Prompt</h2>
@@ -294,11 +318,13 @@ function AgentCard({agent, onClick}) {
                         {agent.is_builtin && <Lock className="size-3 shrink-0 text-muted-foreground/50"/>}
                     </div>
                     <div className="mt-0.5 flex gap-1">
-
                         {agent.strip_file_tools && <Badge>no files</Badge>}
                     </div>
                 </div>
             </div>
+            {agent.description && (
+                <p className="mb-2 line-clamp-2 text-[11px] text-muted-foreground/70">{agent.description}</p>
+            )}
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 {agent.tools.length > 0 ? (
                     <><Wrench className="size-2.5"/><span className="truncate">{agent.tools.join(", ")}</span></>
@@ -339,6 +365,7 @@ const CreateAgent = observer(function CreateAgent({onBack, onCreated}) {
     const {agentStore: s} = useStore();
     const [tab, setTab] = useState("info");
     const [name, setName] = useState("");
+    const [description, setDescription] = useState("");
     const [prompt, setPrompt] = useState("");
     const [selectedTools, setSelectedTools] = useState(new Set());
     const [selectedSkills, setSelectedSkills] = useState(new Set());
@@ -368,7 +395,7 @@ const CreateAgent = observer(function CreateAgent({onBack, onCreated}) {
 
     const handleCreate = async () => {
         if (!name.trim()) return;
-        const ok = await s.create(name.trim(), prompt, [...selectedTools], [...selectedSkills]);
+        const ok = await s.create(name.trim(), prompt, [...selectedTools], [...selectedSkills], description);
         if (ok) onCreated(name.trim());
     };
 
@@ -410,12 +437,11 @@ const CreateAgent = observer(function CreateAgent({onBack, onCreated}) {
             {/* right content */}
             <div className="min-h-0 flex-1 overflow-hidden">
                 <div className="flex h-full flex-col px-6 py-6">
-                    {tab === "info" && (
+                    {tab === "info" &&
                         <div className="space-y-4">
                             <h2 className="text-sm font-medium">Agent Info</h2>
                             <div>
-                                <label className="mb-1 block text-[12px] font-medium text-muted-foreground">Name (unique
-                                    identifier)</label>
+                                <label className="mb-1 block text-[12px] font-medium text-muted-foreground">Name</label>
                                 <input
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
@@ -424,8 +450,18 @@ const CreateAgent = observer(function CreateAgent({onBack, onCreated}) {
                                 />
                                 <p className="mt-1 text-[11px] text-muted-foreground/60">Agent 唯一标识，创建后不可修改。</p>
                             </div>
+                            <div>
+                                <label className="mb-1 block text-[12px] font-medium text-muted-foreground">Description</label>
+                                <textarea
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    placeholder="Describe what this agent does and when to use it..."
+                                    className="min-h-[80px] w-full resize-y rounded-lg border border-border/60 bg-sidebar/30 px-3 py-2 text-[13px] outline-none focus:border-accent/40"
+                                />
+                                <p className="mt-1 text-[11px] text-muted-foreground/60">Used by Manus/TeamLeader to decide when to dispatch to this agent.</p>
+                            </div>
                         </div>
-                    )}
+                    }
 
                     {tab === "prompt" && (
                         <div className="flex h-full flex-col">
@@ -525,7 +561,6 @@ const CreateAgent = observer(function CreateAgent({onBack, onCreated}) {
                             )}
                         </div>
                     )}
-                    )
                 </div>
             </div>
         </div>
