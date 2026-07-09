@@ -127,6 +127,42 @@ async def post_message(
         await queue.put(E.done_sentinel(session_id))
         return {"ok": True, "session_id": session_id, "action": "cd", "workdir": str(target)}
 
+    # ── /skill command: inject skill content into the prompt ─────────────
+    if content.startswith("/skill ") or content == "/skill":
+        skill_name = content[7:].strip() if len(content) > 6 else ""
+
+        # /skill with no arg: list available skills
+        if not skill_name:
+            from ..skill_loader import skill_loader
+            queue = channels.get_queue(session_id)
+            msg_id = f"skill-{uuid.uuid4().hex}"
+            names = skill_loader.all_names()
+            text = "📋 Available skills:\n" + ("\n".join(f"  /skill {n}" for n in names) if names else "(no skills installed)")
+            await queue.put(E.frame(E.ev_message_start(session_id=session_id, message_id=msg_id, speaker="system")))
+            await queue.put(E.frame(E.ev_text_delta(session_id=session_id, message_id=msg_id, speaker="system", delta=text)))
+            await queue.put(E.frame(E.ev_message_end(session_id=session_id, message_id=msg_id, speaker="system")))
+            await queue.put(E.frame(E.ev_done(session_id=session_id)))
+            await queue.put(E.done_sentinel(session_id))
+            return {"ok": True, "session_id": session_id, "action": "skill-list"}
+
+        # load the skill's SKILL.md
+        from ..skill_loader import skill_loader
+        sdir = skill_loader.skill_dir(skill_name)
+        if not sdir or not sdir.exists():
+            queue = channels.get_queue(session_id)
+            msg_id = f"skill-{uuid.uuid4().hex}"
+            await queue.put(E.frame(E.ev_message_start(session_id=session_id, message_id=msg_id, speaker="system")))
+            await queue.put(E.frame(E.ev_text_delta(session_id=session_id, message_id=msg_id, speaker="system", delta=f"❌ Skill '{skill_name}' not found. Use /skill to list available.")))
+            await queue.put(E.frame(E.ev_message_end(session_id=session_id, message_id=msg_id, speaker="system")))
+            await queue.put(E.frame(E.ev_done(session_id=session_id)))
+            await queue.put(E.done_sentinel(session_id))
+            return {"ok": True, "session_id": session_id, "action": "skill-notfound"}
+
+        skill_md = (sdir / "SKILL.md").read_text(encoding="utf-8")
+        # rewrite content: inject the skill as context + keep any user text after it
+        user_text = ""  # /skill alone = just activate the skill
+        body.content = f"The user activated the skill '{skill_name}'. Follow its instructions for this and subsequent messages until told otherwise.\n\n--- Skill: {skill_name} ---\n{skill_md}\n--- End Skill ---\n\n{user_text}"
+
     # ── normal message: run agent ────────────────────────────────────────
     workdir = s.get("workdir") or settings.workdir
     agent = await _resolve_agent(request, s)
