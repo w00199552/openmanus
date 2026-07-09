@@ -30,13 +30,13 @@ export function TopNav({activeView = "chat", onNavigate}) {
   return (
     <header
       onDoubleClick={handleDoubleClick}
-      style={{appRegion: "drag"} as React.CSSProperties}
+      style={{appRegion: "drag"}}
       className="relative flex h-11 shrink-0 items-center border-b border-border/60 px-3"
     >
       {/* Logo (left) */}
       <button
         onClick={() => onNavigate?.("chat")}
-        style={{appRegion: "no-drag"} as React.CSSProperties}
+        style={{appRegion: "no-drag"}}
         className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-semibold"
       >
         <Sparkles className="size-3.5 text-accent"/>
@@ -45,7 +45,7 @@ export function TopNav({activeView = "chat", onNavigate}) {
 
       {/* Nav items (centered) */}
       <nav
-        style={{appRegion: "no-drag"} as React.CSSProperties}
+        style={{appRegion: "no-drag"}}
         className="absolute left-1/2 flex -translate-x-1/2 items-center gap-0.5"
       >
         {NAV_ITEMS.map((item) => (
@@ -72,7 +72,7 @@ export function TopNav({activeView = "chat", onNavigate}) {
 
       {/* Right: settings + login + window controls */}
       <div
-        style={{appRegion: "no-drag"} as React.CSSProperties}
+        style={{appRegion: "no-drag"}}
         className="ml-auto flex items-center gap-1"
       >
         <button
