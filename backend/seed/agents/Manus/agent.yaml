@@ -6,3 +6,4 @@ strip_file_tools: true
 sub_agents: []
 tools:
 - dispatch
+is_builtin: true

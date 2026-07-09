@@ -91,6 +91,7 @@ class AgentLoader:
                     "sub_agents": raw.get("sub_agents", []),
                     "strip_file_tools": raw.get("strip_file_tools", False),
                     "allowed_tools": set(raw.get("allowed_tools", [])),
+                    "is_builtin": raw.get("is_builtin", False),
                 }
                 self._configs[name] = cfg
                 logger.info("loaded agent: %s (tools=%s)", name, cfg["tools"])
@@ -184,6 +185,7 @@ class AgentLoader:
             "sub_agents": [],
             "strip_file_tools": False,
             "allowed_tools": [],
+            "is_builtin": False,
         }
         (d / "agent.yaml").write_text(
             yaml.dump(yaml_data, default_flow_style=False, allow_unicode=True),
@@ -201,7 +203,10 @@ class AgentLoader:
         return self._configs[name]
 
     def delete(self, name: str) -> None:
-        if name.lower() in ("manus", "teamleader"):
+        cfg = self._configs.get(name)
+        if not cfg:
+            raise ValueError(f"agent '{name}' not found")
+        if cfg.get("is_builtin", False):
             raise ValueError(f"cannot delete built-in agent '{name}'")
         cfg = self._configs.get(name)
         if not cfg:

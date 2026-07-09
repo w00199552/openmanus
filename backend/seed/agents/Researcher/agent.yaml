@@ -10,3 +10,4 @@ skills: []
 strip_file_tools: false
 sub_agents: []
 tools: []
+is_builtin: true

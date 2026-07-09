@@ -10,3 +10,4 @@ tools:
 - read_mailbox
 - whiteboard_write
 - whiteboard_read
+is_builtin: true

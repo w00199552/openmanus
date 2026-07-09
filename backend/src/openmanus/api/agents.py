@@ -11,8 +11,8 @@ from ..tool_loader import tool_loader
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
-# Built-in agent names (cannot be deleted/modified by users).
-_BUILTIN_AGENT_NAMES = {"Manus", "TeamLeader"}
+# Built-in agent check: is_builtin is read from agent.yaml (seed agents have
+# is_builtin: true). No hardcoded names.
 
 
 # ─── Pydantic models ────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ async def list_agents() -> list[AgentSummary]:
             strip_file_tools=cfg.get("strip_file_tools", False),
             allowed_tools=sorted(cfg.get("allowed_tools", set())),
             has_prompt=bool(cfg.get("prompt")),
-            is_builtin=name in _BUILTIN_AGENT_NAMES,
+            is_builtin=cfg.get("is_builtin", False),
         ))
     # sort: builtin first, then by name
     result.sort(key=lambda a: (not a.is_builtin, a.name))
@@ -161,7 +161,7 @@ async def update_agent(name: str, body: UpdateAgentBody) -> dict:
     """Update an agent's prompt and/or tools and/or skills (writes to disk)."""
     if not agent_loader.get(name):
         raise HTTPException(status_code=404, detail="agent not found")
-    if name in _BUILTIN_AGENT_NAMES:
+    if agent_loader.get(name, ).get("is_builtin", False):
         raise HTTPException(status_code=403, detail="built-in agents cannot be modified")
     if body.prompt is not None:
         agent_loader.save_prompt(name, body.prompt)
