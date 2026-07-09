@@ -17,6 +17,7 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=2.0",
     "aiosqlite>=0.22.1",
     "sse-starlette>=3.4.5",
+    "watchdog>=6.0.0",
 ]
 
 [build-system]

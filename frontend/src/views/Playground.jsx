@@ -1,153 +1,267 @@
-import {useState} from "react";
-import {Code2, FolderTree} from "lucide-react";
+import {useState, useEffect, useCallback, useRef} from "react";
+import {
+  ChevronRight, ChevronDown, FileText, FileCode, File, Folder, FolderOpen,
+  Save, RefreshCw, Loader2,
+} from "lucide-react";
+import MDEditor from "@uiw/react-md-editor";
+import {Highlight, themes} from "prism-react-renderer";
 
-import {Group, Panel, Separator} from "react-resizable-panels";
-
-import {CodeEditor} from "@/components/playground/CodeEditor";
 import {cn} from "@/lib/utils";
 
-// The toolset the playground can tile. Order here = left-to-right order.
-const TOOL_DEFS = [
-  { key: "sandbox", label: "Sandbox", icon: FolderTree, render: () => <SandboxView /> },
-  { key: "ide", label: "Code", icon: Code2, render: () => <CodeEditor /> },
-];
-
-const DEFAULT_OPEN = ["sandbox", "ide"];
+const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
 
 /**
- * Playground — the right half: a tiled tool surface.
+ * Playground — file tree + content editor for the workdir.
  *
- * Top toolbar: each tool is a toggle — click to open/close it.
- * Bottom: ALL open tools are tiled side-by-side (draggable separators), with
- * Sandbox on the left by convention. This is multi-window tiling (like an
- * editor's split view), not single-tab switching.
- *
- * Vision: which tools are open is decided by the active agent/team (via
- * CopilotKit frontendTool). This scaffold ships Sandbox + Code.
+ * Left: file tree (recursive, expandable).
+ * Right: file content (markdown editor / code viewer / text).
+ * Live refresh: watches /files/watch SSE for external changes.
+ * Save: PUT /files/write.
  */
 export function Playground() {
-  const [open, setOpen] = useState(DEFAULT_OPEN);
+  const [tree, setTree] = useState(null);
+  const [expanded, setExpanded] = useState(new Set());
+  const [file, setFile] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const watchRef = useRef(null);
 
-  const toggle = (key) => {
-    setOpen((cur) =>
-      cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key],
-    );
+  const loadTree = useCallback(async () => {
+    try {
+      const res = await fetch(`${BACKEND}/files/tree`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setTree(data);
+      // auto-expand first level
+      const dirs = new Set();
+      collectDirs(data, dirs);
+      setExpanded(dirs);
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, []);
+
+  const loadFile = useCallback(async (path) => {
+    try {
+      const res = await fetch(`${BACKEND}/files/read?path=${encodeURIComponent(path)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setFile(data);
+      setDraft(data.content);
+      setDirty(false);
+    } catch { /* ignore */ }
+  }, []);
+
+  const saveFile = useCallback(async () => {
+    if (!file || !dirty) return;
+    setSaving(true);
+    try {
+      await fetch(`${BACKEND}/files/write`, {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({path: file.path, content: draft}),
+      });
+      setDirty(false);
+    } catch { /* ignore */ }
+    setSaving(false);
+  }, [file, draft, dirty]);
+
+  // initial load
+  useEffect(() => {
+    loadTree();
+  }, [loadTree]);
+
+  // watchdog: live refresh
+  useEffect(() => {
+    const es = new EventSource(`${BACKEND}/files/watch`);
+    es.onmessage = (ev) => {
+      try {
+        const evt = JSON.parse(ev.data);
+        if (evt.type === "ping") return;
+        // refresh tree on any structural change
+        if (evt.type === "created" || evt.type === "deleted" || evt.type === "moved") {
+          loadTree();
+        }
+        // refresh open file if it was modified externally
+        if (evt.type === "modified" && file && evt.path === file.path && !dirty) {
+          loadFile(file.path);
+        }
+      } catch { /* ignore */ }
+    };
+    return () => es.close();
+  }, [loadTree, loadFile, file, dirty]);
+
+  const toggleDir = (path) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
   };
 
-  const openDefs = TOOL_DEFS.filter((d) => open.includes(d.key));
-  // keep Sandbox first (left-most) by convention
-  openDefs.sort((a, b) => {
-    if (a.key === "sandbox") return -1;
-    if (b.key === "sandbox") return 1;
-    return 0;
-  });
+  const onSelectFile = (path) => {
+    if (dirty && !confirm("Discard unsaved changes?")) return;
+    loadFile(path);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="size-4 animate-spin text-muted-foreground"/>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-full flex-col bg-sidebar">
-      {/* ── tool toolbar (toggles) ────────────────────────────────── */}
-      <div className="flex items-center gap-1 border-b border-border/60 px-2 py-1.5">
-        {TOOL_DEFS.map((def) => {
-          const Icon = def.icon;
-          const isOpen = open.includes(def.key);
-          return (
+    <div className="flex h-full flex-col">
+      {/* toolbar */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2">
+        <span className="text-[12px] font-medium text-muted-foreground">Sandbox</span>
+        <button onClick={loadTree} className="rounded-md p-1 text-muted-foreground transition hover:bg-card hover:text-foreground" title="Refresh">
+          <RefreshCw className="size-3.5"/>
+        </button>
+        <div className="flex-1"/>
+        {file && (
+          <>
+            <span className="text-[11px] text-muted-foreground/60">{file.name}{dirty ? " •" : ""}</span>
             <button
-              key={def.key}
-              onClick={() => toggle(def.key)}
+              onClick={saveFile}
+              disabled={!dirty || saving}
               className={cn(
-                "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition",
-                isOpen
-                  ? "bg-accent/15 text-accent"
-                  : "text-muted-foreground/60 hover:text-foreground/70",
+                "flex items-center gap-1 rounded-md px-2 py-1 text-[12px] transition",
+                dirty ? "bg-accent/15 text-accent hover:bg-accent/25" : "text-muted-foreground/40 cursor-default",
               )}
-              title={isOpen ? `Close ${def.label}` : `Open ${def.label}`}
             >
-              <Icon className="size-3.5" />
-              {def.label}
-              <span
-                className={cn(
-                  "ml-0.5 size-1.5 rounded-full",
-                  isOpen ? "bg-accent" : "bg-muted-foreground/30",
-                )}
-              />
+              {saving ? <Loader2 className="size-3 animate-spin"/> : <Save className="size-3"/>}
+              Save
             </button>
-          );
-        })}
-      </div>
-
-      {/* ── tiled tool windows ────────────────────────────────────── */}
-      <div className="flex-1 overflow-hidden">
-        {openDefs.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <TiledGroup defs={openDefs} />
+          </>
         )}
       </div>
-    </div>
-  );
-}
 
-/**
- * Tile all open tools side-by-side with draggable separators between them.
- * (react-resizable-panels requires Separator as a sibling of Panel inside
- * Group, so we interleave them here.)
- */
-function TiledGroup({ defs }) {
-  return (
-    <Group
-      orientation="horizontal"
-      className="flex h-full"
-      style={{ flexDirection: "row" }}
-    >
-      {defs.map((def, idx) => (
-        <FragmentTile key={def.key} def={def} showSep={idx > 0} />
-      ))}
-    </Group>
-  );
-}
-
-function FragmentTile({ def, showSep }) {
-  return (
-    <>
-      {showSep && (
-        <Separator className="sep-bar relative w-1.5 cursor-col-resize">
-          <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
-        </Separator>
-      )}
-      <Panel id={def.key} minSize="15%">
-        <div className="flex h-full flex-col">
-          <div className="flex items-center gap-1.5 border-b border-border/60 bg-background/40 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            <def.icon className="size-3" />
-            {def.label}
-          </div>
-          <div className="flex-1 overflow-hidden">{def.render()}</div>
+      {/* tree + content */}
+      <div className="flex min-h-0 flex-1">
+        {/* file tree */}
+        <div className="w-56 shrink-0 overflow-y-auto border-r border-border/60 bg-sidebar/20 px-2 py-2">
+          {tree && (
+            <TreeNode node={tree} expanded={expanded} toggleDir={toggleDir} onSelect={onSelectFile} selectedPath={file?.path} depth={0}/>
+          )}
         </div>
-      </Panel>
-    </>
-  );
-}
 
-function EmptyState() {
-  return (
-    <div className="flex h-full items-center justify-center text-xs text-muted-foreground/60">
-      No tool open. Open one from the toolbar above.
+        {/* content */}
+        <div className="min-h-0 flex-1 overflow-auto" data-color-mode="dark">
+          {file ? (
+            <FileEditor file={file} draft={draft} setDraft={(v) => { setDraft(v); setDirty(true); }}/>
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Select a file
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function SandboxView() {
+// ─── Tree node (recursive) ──────────────────────────────────────────────────
+
+function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth}) {
+  const isDir = node.type === "dir";
+  const isOpen = expanded.has(node.path);
+
+  if (depth === 0 && isDir) {
+    return (
+      <div>
+        {(node.children || []).map((child) => (
+          <TreeNode key={child.path || child.name} node={child} expanded={expanded} toggleDir={toggleDir} onSelect={onSelect} selectedPath={selectedPath} depth={1}/>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className="h-full overflow-y-auto bg-sidebar p-3">
-      <pre className="font-mono text-[11px] leading-relaxed text-muted-foreground">
-{`📁 backend/
-   📁 src/openmanus/
-   📁 tests/
-   📄 pyproject.toml
-📁 runtime/
-   📄 src/index.js
-📁 frontend/
-   📁 src/
-   📄 package.json`}
-      </pre>
+    <div>
+      <button
+        onClick={() => isDir ? toggleDir(node.path) : onSelect(node.path)}
+        className={cn(
+          "flex w-full items-center gap-1 rounded-md px-2 py-1 text-[12px] transition",
+          !isDir && selectedPath === node.path
+            ? "bg-accent/10 text-accent"
+            : "text-muted-foreground hover:bg-sidebar/40 hover:text-foreground",
+        )}
+        style={{paddingLeft: `${depth * 12 + 4}px`}}
+      >
+        {isDir ? (
+          <>
+            {isOpen ? <ChevronDown className="size-3 shrink-0"/> : <ChevronRight className="size-3 shrink-0"/>}
+            {isOpen ? <FolderOpen className="size-3 shrink-0 text-muted-foreground/60"/> : <Folder className="size-3 shrink-0 text-muted-foreground/60"/>}
+          </>
+        ) : (
+          <>
+            <span className="w-3 shrink-0"/>
+            <FileIcon name={node.name}/>
+          </>
+        )}
+        <span className="truncate">{node.name}</span>
+      </button>
+      {isDir && isOpen && (node.children || []).map((child) => (
+        <TreeNode key={child.path || child.name} node={child} expanded={expanded} toggleDir={toggleDir} onSelect={onSelect} selectedPath={selectedPath} depth={depth + 1}/>
+      ))}
     </div>
   );
+}
+
+function FileIcon({name}) {
+  const ext = name.split(".").pop()?.toLowerCase();
+  if (ext === "md") return <FileText className="size-3 shrink-0 text-accent/60"/>;
+  if (["py", "js", "jsx", "ts", "tsx", "sh", "json", "yaml", "yml", "css"].includes(ext)) return <FileCode className="size-3 shrink-0 text-muted-foreground/50"/>;
+  return <File className="size-3 shrink-0 text-muted-foreground/40"/>;
+}
+
+// ─── File editor ────────────────────────────────────────────────────────────
+
+function FileEditor({file, draft, setDraft}) {
+  if (file.file_type === "markdown") {
+    return (
+      <div className="h-full" data-color-mode="dark">
+        <MDEditor value={draft} onChange={(v) => setDraft(v || "")} height="100%" preview="live" data-color-mode="dark" style={{height: "100%"}}/>
+      </div>
+    );
+  }
+
+  if (file.file_type === "code") {
+    const ext = file.name.split(".").pop()?.toLowerCase() || "text";
+    const langMap = {py: "python", js: "javascript", jsx: "jsx", ts: "typescript", tsx: "tsx", sh: "bash", json: "json", yaml: "yaml", yml: "yaml", css: "css", html: "markup", sql: "sql"};
+    const lang = langMap[ext] || "text";
+    return (
+      <Highlight theme={themes.vsDark} code={draft} language={lang}>
+        {({className, style, tokens, getLineProps, getTokenProps}) => (
+          <pre className={cn(className, "m-0 p-4 text-[12px] leading-relaxed")} style={{...style, background: "transparent"}}>
+            {tokens.map((line, i) => {
+              const lineProps = getLineProps({line});
+              return (
+                <div key={i} {...lineProps}>
+                  <span className="mr-3 inline-block w-8 select-none text-right text-muted-foreground/30">{i + 1}</span>
+                  {line.map((token, key) => <span key={key} {...getTokenProps({token})}/>)}
+                </div>
+              );
+            })}
+          </pre>
+        )}
+      </Highlight>
+    );
+  }
+
+  return <pre className="p-4 text-[12px] leading-relaxed text-muted-foreground/80">{draft}</pre>;
+}
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+function collectDirs(node, dirs) {
+  if (node.type === "dir") {
+    dirs.add(node.path);
+    for (const child of node.children || []) collectDirs(child, dirs);
+  }
 }
