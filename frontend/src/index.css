@@ -118,6 +118,11 @@
     color: hsl(240 4% 45%);
     opacity: 0.5;
   }
+  textarea::placeholder,
+  input::placeholder {
+    color: hsl(240 4% 45%) !important;
+    opacity: 0.5 !important;
+  }
     /* Geist for UI chrome */
     font-family:
       "Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
