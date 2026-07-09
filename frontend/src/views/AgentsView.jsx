@@ -140,6 +140,14 @@ const AgentDetail = observer(function AgentDetail({name, onBack}) {
                             icon={<Sparkles className="size-3.5"/>}>
                         Skills
                     </TabBtn>
+                    <TabBtn active={tab === "subagents"} onClick={() => setTab("subagents")}
+                            icon={<Bot className="size-3.5"/>}>
+                        SubAgents
+                    </TabBtn>
+                    <TabBtn active={tab === "interrupt"} onClick={() => setTab("interrupt")}
+                            icon={<AlertCircle className="size-3.5"/>}>
+                        Interrupt
+                    </TabBtn>
                 </div>
 
                 <div className="mt-auto p-3">
@@ -298,6 +306,24 @@ const AgentDetail = observer(function AgentDetail({name, onBack}) {
                             )}
                         </div>
                     )}
+
+                    {tab === "subagents" && (
+                        <div>
+                            <h2 className="mb-3 text-sm font-medium">SubAgents</h2>
+                            <p className="text-[12px] text-muted-foreground">
+                                Configure which agents this agent can dispatch to. Coming soon.
+                            </p>
+                        </div>
+                    )}
+
+                    {tab === "interrupt" && (
+                        <div>
+                            <h2 className="mb-3 text-sm font-medium">Human-in-the-Loop</h2>
+                            <p className="text-[12px] text-muted-foreground">
+                                Configure which tools require human approval before execution. Coming soon.
+                            </p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -421,6 +447,10 @@ const CreateAgent = observer(function CreateAgent({onBack, onCreated}) {
                             icon={<Wrench className="size-3.5"/>}>Tools</TabBtn>
                     <TabBtn active={tab === "skills"} onClick={() => setTab("skills")}
                             icon={<Sparkles className="size-3.5"/>}>Skills</TabBtn>
+                    <TabBtn active={tab === "subagents"} onClick={() => setTab("subagents")}
+                            icon={<Bot className="size-3.5"/>}>SubAgents</TabBtn>
+                    <TabBtn active={tab === "interrupt"} onClick={() => setTab("interrupt")}
+                            icon={<AlertCircle className="size-3.5"/>}>Interrupt</TabBtn>
                 </div>
                 <div className="mt-auto p-3">
                     <button
@@ -559,6 +589,24 @@ const CreateAgent = observer(function CreateAgent({onBack, onCreated}) {
                                     })}
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {tab === "subagents" && (
+                        <div>
+                            <h2 className="mb-3 text-sm font-medium">SubAgents</h2>
+                            <p className="text-[12px] text-muted-foreground">
+                                Configure which agents this agent can dispatch to. Coming soon.
+                            </p>
+                        </div>
+                    )}
+
+                    {tab === "interrupt" && (
+                        <div>
+                            <h2 className="mb-3 text-sm font-medium">Human-in-the-Loop</h2>
+                            <p className="text-[12px] text-muted-foreground">
+                                Configure which tools require human approval before execution. Coming soon.
+                            </p>
                         </div>
                     )}
                 </div>
