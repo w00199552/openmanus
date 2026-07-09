@@ -103,7 +103,13 @@ export const Workspace = observer(function Workspace() {
         onLayoutChanged={(l) => setMainLayout(l)}
       >
         {/* ── LEFT HALF: list | chat ─────────────────────────────────── */}
-        <Panel id="left" defaultSize={chatCollapsed ? "5%" : "50%"} minSize="3%" maxSize={chatCollapsed ? "8%" : undefined}>
+        <Panel
+          key={chatCollapsed ? "left-collapsed" : "left-expanded"}
+          id="left"
+          defaultSize={chatCollapsed ? 56 : 50}
+          minSize={chatCollapsed ? 56 : 20}
+          maxSize={chatCollapsed ? 56 : undefined}
+        >
           <div className="flex h-full" style={{ flexDirection: "row" }}>
             {/* SessionList always visible (narrow strip when collapsed) */}
             <div className={chatCollapsed ? "w-14 shrink-0 overflow-hidden" : "min-w-0 flex-1"}>
