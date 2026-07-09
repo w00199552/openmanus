@@ -1,0 +1,12 @@
+allowed_tools:
+- read_file
+- list_directory
+- ls
+- glob
+- grep
+name: Researcher
+prompt_file: prompt.md
+skills: []
+strip_file_tools: false
+sub_agents: []
+tools: []
