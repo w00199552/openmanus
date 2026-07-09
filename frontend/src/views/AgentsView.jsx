@@ -422,8 +422,7 @@ const CreateAgent = observer(function CreateAgent({onBack, onCreated}) {
                                     placeholder="e.g. code_reviewer"
                                     className="w-full rounded-lg border border-border/60 bg-sidebar/30 px-3 py-2 text-[13px] outline-none focus:border-accent/40"
                                 />
-                                <p className="mt-1 text-[11px] text-muted-foreground/60">Lowercase, no spaces. Used as
-                                    the agent's unique key.</p>
+                                <p className="mt-1 text-[11px] text-muted-foreground/60">Agent 唯一标识，创建后不可修改。</p>
                             </div>
                         </div>
                     )}
