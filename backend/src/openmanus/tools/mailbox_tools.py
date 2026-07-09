@@ -78,6 +78,9 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         caller_session_id = _config_session_id(config)
         caller_row = await session_store.get(caller_session_id)
         caller_scope = (caller_row or {}).get("scope_id")
+        # Inherit caller's workdir (supports /cd command — child works in the
+        # same directory as the caller, not the global settings.workdir).
+        caller_workdir = (caller_row or {}).get("workdir") or workdir
 
         # ── teamleader: create a team session (scope root) ──
         if target_agent.lower() == "teamleader":
@@ -85,6 +88,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
                 kind="team",
                 name=target_agent,
                 title=task[:60] or "team task",
+                workdir=caller_workdir,
                 scope_id=None,
                 metadata={
                     "parent": caller_session_id,
@@ -93,7 +97,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
             )
             team_id = team["id"]
             await session_store.update(team_id, status="running")
-            team_agent = await build_agent(target_agent, workdir)
+            team_agent = await build_agent(target_agent, caller_workdir)
             await engine.run(
                 agent=team_agent, session_id=team_id, prompt=task,
                 speaker=target_agent, mode="async",
@@ -113,7 +117,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         else:
             scope_id = caller_scope
 
-        child_workdir = str(Path(workdir) / "agents" / target_agent)
+        child_workdir = str(Path(caller_workdir) / "agents" / target_agent)
         Path(child_workdir).mkdir(parents=True, exist_ok=True)
 
         child = await session_store.create(
@@ -130,7 +134,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         )
         child_id = child["id"]
 
-        sub_agent = await build_agent(target_agent, child_workdir)
+        sub_agent = await build_agent(target_agent, child_workdir)  # noqa: same var, different context
         await engine.start(
             agent=sub_agent,
             caller_session_id=caller_session_id,

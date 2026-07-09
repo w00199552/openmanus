@@ -27,11 +27,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Any
 
+from .. import event_schema as E
 from ..channels import channels, drain_single, drain_sessions, fan_in
 from ..db import session_store
 from ..engine import engine
@@ -62,28 +64,79 @@ async def post_message(
 ) -> dict:
     """Send a user message and TRIGGER the agent run (background, non-blocking).
 
-    Does NOT stream the run — returns immediately. The client should open
-    ``GET /stream?sessions=<session_id>`` to receive the agent's streamed
-    output. Splitting trigger (POST) from delivery (GET) keeps both simple and
-    reliable.
+    Special commands (processed before the agent runs):
+      /cd <path>   — switch this session's workdir (sandbox root).
+                     Affects all subsequent dispatch + file operations.
     """
     s = await session_store.get(session_id)
     if not s:
         raise HTTPException(status_code=404, detail="session not found")
 
+    content = body.content.strip()
+
+    # ── /cd command: switch workdir ──────────────────────────────────────
+    if content.startswith("/cd ") or content == "/cd":
+        path = content[4:].strip() if len(content) > 3 else ""
+        if not path:
+            # /cd with no arg: show current workdir
+            cur = s.get("workdir") or "(not set)"
+            queue = channels.get_queue(session_id)
+            await queue.put(E.frame(E.ev_message_start(
+                session_id=session_id, message_id=f"cd-{uuid.uuid4().hex}",
+                speaker="system",
+            )))
+            await queue.put(E.frame(E.ev_text_delta(
+                session_id=session_id, message_id=f"cd-resp",
+                speaker="system", delta=f"📁 Current workdir: {cur}",
+            )))
+            await queue.put(E.frame(E.ev_message_end(
+                session_id=session_id, message_id=f"cd-resp",
+                speaker="system",
+            )))
+            await queue.put(E.frame(E.ev_done(session_id=session_id)))
+            await queue.put(E.done_sentinel(session_id))
+            return {"ok": True, "session_id": session_id, "action": "pwd"}
+
+        # expand + validate
+        from pathlib import Path
+        target = Path(path).expanduser().resolve()
+        if not target.exists() or not target.is_dir():
+            raise HTTPException(status_code=400, detail=f"path does not exist or not a directory: {target}")
+
+        # update session workdir
+        await session_store.update(session_id, workdir=str(target))
+
+        # rebuild agent with new workdir (so the backend root_dir matches)
+        from ..agent_factory import build_agent
+        agent = await build_agent(s.get("name") or "Manus", str(target))
+
+        # push a confirmation message to the stream
+        queue = channels.get_queue(session_id)
+        msg_id = f"cd-{uuid.uuid4().hex}"
+        await queue.put(E.frame(E.ev_message_start(
+            session_id=session_id, message_id=msg_id, speaker="system",
+        )))
+        await queue.put(E.frame(E.ev_text_delta(
+            session_id=session_id, message_id=msg_id, speaker="system",
+            delta=f"📁 Workdir switched to: {target}",
+        )))
+        await queue.put(E.frame(E.ev_message_end(
+            session_id=session_id, message_id=msg_id, speaker="system",
+        )))
+        await queue.put(E.frame(E.ev_done(session_id=session_id)))
+        await queue.put(E.done_sentinel(session_id))
+        return {"ok": True, "session_id": session_id, "action": "cd", "workdir": str(target)}
+
+    # ── normal message: run agent ────────────────────────────────────────
+    workdir = s.get("workdir") or settings.workdir
     agent = await _resolve_agent(request, s)
-    # speaker = who PRODUCES the streamed text = this session's agent identity.
+    # rebuild agent with session's workdir (in case it was changed by /cd earlier)
+    if s.get("workdir"):
+        from ..agent_factory import build_agent
+        agent = await build_agent(s.get("name") or "Manus", workdir)
+
     speaker = s.get("name") or ("TeamLeader" if s.get("kind") == "team" else "Manus")
 
-    # Run the agent in the BACKGROUND. It pushes events onto the session's
-    # channel; the client drains them via GET /stream. We don't await the run
-    # here — that's the whole point (POST returns fast).
-    #
-    # include_subgraphs: the DEFAULT entry agent is a pure router — its only
-    # tool is `dispatch`, which launches sub-agents as INDEPENDENT background
-    # Run the agent in the BACKGROUND. All agents use subgraphs=False (every
-    # agent is independent — no subgraphs). Dispatched agents run deferred
-    # (after this agent's astream finishes) so there's no concurrent astream.
     asyncio.create_task(
         engine._stream(
             agent=agent, session_id=session_id, prompt=body.content, speaker=speaker,
