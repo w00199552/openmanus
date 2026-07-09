@@ -1,4 +1,4 @@
-import { Highlight, themes } from "prism-react-renderer";
+import {Highlight, themes} from "prism-react-renderer";
 
 // Static sample content for the placeholder IDE tab.
 const SAMPLE = `# manus playground — code editor (placeholder)

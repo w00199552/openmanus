@@ -14,13 +14,12 @@ teamleader also has send_message / read_mailbox / whiteboard tools.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Annotated, Any
-
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langchain_core.tools.base import InjectedToolArg
+from pathlib import Path
 from pydantic import BaseModel, Field
+from typing import Annotated, Any
 
 from ..agent_loader import agent_loader
 from ..db import session_store

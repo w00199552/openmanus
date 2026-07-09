@@ -13,12 +13,11 @@ diff-summary / …), not an enforced enum. Content is free text or JSON.
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
-
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langchain_core.tools.base import InjectedToolArg
 from pydantic import BaseModel, Field
+from typing import Annotated, Any
 
 from ..db import session_store
 from ..whiteboard import whiteboard_store

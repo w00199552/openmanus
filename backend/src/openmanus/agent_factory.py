@@ -12,13 +12,12 @@ The checkpointer is SHARED (one DB) but each run uses its own thread_id
 
 from __future__ import annotations
 
-from typing import Any
-
 from deepagents import create_deep_agent
 from deepagents.backends import LocalShellBackend
-from langchain_core.language_models import BaseChatModel
 from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models import BaseChatModel
 from langgraph.graph.state import CompiledStateGraph
+from typing import Any
 
 from .agent_loader import agent_loader
 from .chat_model import ChatGLM
@@ -74,8 +73,7 @@ def _build_model() -> BaseChatModel:
         http_client=sync_http,
         http_async_client=async_http,
         extra_body={"thinking": {"type": "enabled"}},
-        default_headers={"x-reasoning-format": "reasoning"},
-        
+        default_headers={"x-reasoning-format": "reasoning"}
     )
 
 
@@ -128,7 +126,7 @@ def _build_tools(tool_names: list[str], workdir: str, agent_name: str = "") -> l
 
 
 # The entry agent name (hardcoded — the user-facing entry point).
-ENTRY_AGENT = "manus"
+ENTRY_AGENT = "Manus"
 
 
 async def build_agent(name: str, workdir: str) -> CompiledStateGraph:
@@ -189,7 +187,7 @@ async def build_agent(name: str, workdir: str) -> CompiledStateGraph:
             ToolGuardMiddleware(excluded=excluded),
             AgentTraceMiddleware(name=name),
         ],
-        name=f"openmanus-{name}",
+        name=name,
     )
 
 
@@ -209,5 +207,4 @@ async def build_entry_agent(workdir: str = None) -> CompiledStateGraph:
         _entry_agent_cache[wd] = await build_agent(ENTRY_AGENT, wd)
     return _entry_agent_cache[wd]
 
-
-# Entry agent name is hardcoded — use ENTRY_AGENT constant, not is_entry flag.
+# Entry agent name is hardcoded — use ENTRY_AGENT constant.

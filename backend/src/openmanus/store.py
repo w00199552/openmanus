@@ -11,10 +11,9 @@ called from within the event loop (the app lifespan does this).
 
 from __future__ import annotations
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from pathlib import Path
 from urllib.parse import urlparse
-
-from langgraph.checkpoint.base import BaseCheckpointSaver
 
 
 def _is_postgres(url: str) -> bool:

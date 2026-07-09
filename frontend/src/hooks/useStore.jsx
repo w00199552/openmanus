@@ -1,6 +1,6 @@
-import { createContext, useContext } from "react";
+import {createContext, useContext} from "react";
 
-import { rootStore } from "@/stores";
+import {rootStore} from "@/stores";
 
 /**
  * React binding for the mobx RootStore singleton.

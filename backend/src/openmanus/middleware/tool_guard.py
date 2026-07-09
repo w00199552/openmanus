@@ -21,10 +21,9 @@ cannot run them even if it tries.
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable
-
 from langchain.agents.middleware.types import AgentMiddleware
 from langchain_core.messages import ToolMessage
+from typing import Any, Awaitable, Callable
 
 if __name__ != "__main__":  # type guard for TYPE_CHECKING-only import
     pass

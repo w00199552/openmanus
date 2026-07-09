@@ -28,12 +28,11 @@ return + filesystem-artefact pattern) and the "multi-person chat" metaphor.
 
 from __future__ import annotations
 
+import aiosqlite
 import json
 import uuid
 from pathlib import Path
 from typing import Any
-
-import aiosqlite
 
 from .config import settings
 

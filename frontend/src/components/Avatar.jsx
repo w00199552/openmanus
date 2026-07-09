@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import {cn} from "@/lib/utils";
 
 /**
  * Avatar components — DiceBear "adventurer" style, zero-dependency via HTTP API.

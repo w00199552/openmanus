@@ -15,9 +15,8 @@ No behaviour change — purely observational.
 from __future__ import annotations
 
 import logging
-from typing import Any
-
 from langchain.agents.middleware.types import AgentMiddleware
+from typing import Any
 
 logger = logging.getLogger("openmanus.trace")
 

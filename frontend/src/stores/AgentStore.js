@@ -1,6 +1,6 @@
-import { makeAutoObservable, runInAction } from "mobx";
+import {makeAutoObservable, runInAction} from "mobx";
 
-import { listAgents, getAgent, listTools, listSkills } from "@/services/agentService";
+import {getAgent, listAgents, listSkills, listTools} from "@/services/agentService";
 
 const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
 

@@ -1,12 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { Send, Plus, Paperclip, Cpu, Square, AtSign } from "lucide-react";
+import {useEffect, useRef, useState} from "react";
+import {AtSign, Cpu, Paperclip, Plus, Send, Square} from "lucide-react";
 
-import { cn } from "@/lib/utils";
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from "@/components/ui/tooltip";
+import {cn} from "@/lib/utils";
+import {Tooltip, TooltipContent, TooltipTrigger,} from "@/components/ui/tooltip";
 
 /**
  * ChatInput — ZCode-style input bar.

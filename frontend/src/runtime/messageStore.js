@@ -13,9 +13,9 @@
  * @module runtime/messageStore
  */
 
-import { makeAutoObservable } from "mobx";
+import {makeAutoObservable} from "mobx";
 
-import { reduceEvent } from "./eventReducer.js";
+import {reduceEvent} from "./eventReducer.js";
 
 export class MessageStore {
   /** @type {Record<string, import('./eventReducer').Message[]>} session_id → messages */

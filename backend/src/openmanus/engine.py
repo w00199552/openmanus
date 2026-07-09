@@ -22,9 +22,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import Any
-
 from langchain_core.messages import HumanMessage
+from typing import Any
 
 from . import event_schema as E
 from .channels import channels

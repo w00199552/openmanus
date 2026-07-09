@@ -6,8 +6,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..agent_loader import agent_loader
-from ..tool_loader import tool_loader
 from ..skill_loader import skill_loader
+from ..tool_loader import tool_loader
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 

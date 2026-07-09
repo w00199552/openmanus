@@ -15,10 +15,9 @@ Usage: pass ``callbacks=[LLMTraceCallback()]`` to the model, or set it globally.
 from __future__ import annotations
 
 import logging
-from typing import Any
-
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
+from typing import Any
 
 logger = logging.getLogger("openmanus.llm_trace")
 

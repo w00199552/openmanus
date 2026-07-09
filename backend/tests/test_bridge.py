@@ -10,11 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
-
 from langchain_core.messages import AIMessageChunk, ToolMessage
-
 from openmanus.agui_bridge import AGUIBridge
+from typing import Any
 
 
 class FakeAgent:

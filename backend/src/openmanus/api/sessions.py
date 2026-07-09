@@ -8,10 +8,9 @@ lives in ``streams.py`` (POST /sessions/:id/messages, GET /sessions/:id/stream).
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from typing import Any
 
 from ..db import session_store
 

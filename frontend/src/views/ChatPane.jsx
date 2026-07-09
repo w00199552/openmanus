@@ -1,10 +1,10 @@
-import { observer } from "mobx-react-lite";
-import { useEffect } from "react";
+import {observer} from "mobx-react-lite";
+import {useEffect} from "react";
 
-import { useStore } from "@/hooks/useStore";
-import { ThreadView } from "@/components/chat/ThreadView";
-import { ChatInput } from "@/components/chat/ChatInput";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import {useStore} from "@/hooks/useStore";
+import {ThreadView} from "@/components/chat/ThreadView";
+import {ChatInput} from "@/components/chat/ChatInput";
+import {TooltipProvider} from "@/components/ui/tooltip";
 
 /**
  * ChatPane — the middle column, driven by the multi-agent runtime.

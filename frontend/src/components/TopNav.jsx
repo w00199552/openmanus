@@ -1,6 +1,6 @@
-import { Settings, LogIn, Sparkles } from "lucide-react";
+import {LogIn, Settings, Sparkles} from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import {cn} from "@/lib/utils";
 
 // Nav items with "active" = implemented (clickable).
 const NAV_ITEMS = [

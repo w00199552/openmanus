@@ -27,11 +27,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
-
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from typing import Any
 
 from ..channels import channels, drain_single, drain_sessions, fan_in
 from ..db import session_store

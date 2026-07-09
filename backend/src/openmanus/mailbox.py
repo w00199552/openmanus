@@ -23,11 +23,10 @@ agent that's actively running, and runners always wire the pusher first).
 
 from __future__ import annotations
 
+import aiosqlite
 import json
 import logging
 from typing import Any, Awaitable, Callable
-
-import aiosqlite
 
 from .db import _db_path  # reuse the shared db-path helper
 

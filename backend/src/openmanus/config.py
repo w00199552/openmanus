@@ -13,7 +13,6 @@ The agent operates on the real local project files under WORKDIR.
 from __future__ import annotations
 
 from pathlib import Path
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

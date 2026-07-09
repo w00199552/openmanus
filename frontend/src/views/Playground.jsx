@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { FolderTree, Code2 } from "lucide-react";
+import {useState} from "react";
+import {Code2, FolderTree} from "lucide-react";
 
-import { Group, Panel, Separator } from "react-resizable-panels";
+import {Group, Panel, Separator} from "react-resizable-panels";
 
-import { CodeEditor } from "@/components/playground/CodeEditor";
-import { cn } from "@/lib/utils";
+import {CodeEditor} from "@/components/playground/CodeEditor";
+import {cn} from "@/lib/utils";
 
 // The toolset the playground can tile. Order here = left-to-right order.
 const TOOL_DEFS = [

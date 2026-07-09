@@ -1,11 +1,11 @@
-import { observer } from "mobx-react-lite";
-import { useEffect, useState } from "react";
-import { Search, Trash2 } from "lucide-react";
+import {observer} from "mobx-react-lite";
+import {useEffect, useState} from "react";
+import {Search, Trash2} from "lucide-react";
 
-import { useStore } from "@/hooks/useStore";
-import { SessionAvatar } from "@/components/Avatar";
-import { formatListTime } from "@/utils/time";
-import { cn } from "@/lib/utils";
+import {useStore} from "@/hooks/useStore";
+import {SessionAvatar} from "@/components/Avatar";
+import {formatListTime} from "@/utils/time";
+import {cn} from "@/lib/utils";
 
 /**
  * SessionList — left rail, WeChat/Feishu style.

@@ -17,11 +17,10 @@ artefact pattern stays flexible while avoiding the "game of telephone".
 
 from __future__ import annotations
 
+import aiosqlite
 import logging
 import uuid
 from typing import Any
-
-import aiosqlite
 
 from .db import _db_path
 
