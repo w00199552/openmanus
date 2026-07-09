@@ -110,6 +110,14 @@
        dark mode, matching the canvas. Stops the team @-selector option list
        from popping up in a jarring light theme. */
     color-scheme: dark;
+  }
+
+  /* Placeholder color fallback (Electron sometimes doesn't resolve the
+     Tailwind placeholder:text-muted-foreground CSS variable chain). */
+  ::placeholder {
+    color: hsl(240 4% 45%);
+    opacity: 0.5;
+  }
     /* Geist for UI chrome */
     font-family:
       "Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
