@@ -96,19 +96,19 @@ export const Workspace = observer(function Workspace() {
       {/* Chat view: resizable panels */}
       {activeView === "chat" && (
       <Group
+        key={chatCollapsed ? "main-collapsed" : "main-expanded"}
         orientation="horizontal"
         className="flex min-h-0 flex-1"
         style={{ flexDirection: "row" }}
-        defaultLayout={mainLayout}
-        onLayoutChanged={(l) => setMainLayout(l)}
+        defaultLayout={chatCollapsed ? [8, 92] : (mainLayout || [50, 50])}
+        onLayoutChanged={(l) => { if (!chatCollapsed) setMainLayout(l); }}
       >
         {/* ── LEFT HALF: list | chat ─────────────────────────────────── */}
         <Panel
-          key={chatCollapsed ? "left-collapsed" : "left-expanded"}
           id="left"
-          defaultSize={chatCollapsed ? 56 : 50}
-          minSize={chatCollapsed ? 56 : 20}
-          maxSize={chatCollapsed ? 56 : undefined}
+          defaultSize={chatCollapsed ? 8 : 50}
+          minSize={chatCollapsed ? 8 : 20}
+          maxSize={chatCollapsed ? 8 : 80}
         >
           {chatCollapsed ? (
             /* Collapsed: narrow avatar strip + expand button */
