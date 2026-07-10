@@ -13,17 +13,9 @@ import {ToolsView} from "@/views/ToolsView";
 /**
  * Workspace — top-level app shell.
  *
- * Layout (expanded):
- *   ┌──────────────────────────────────────────────────┐
- *   │ TopNav                                            │
- *   ├────────────────────┬─────────────────────────────┤
- *   │ LEFT (50%)         │ RIGHT (50%)                 │
- *   │ ┌──────┬─────────┐ │                             │
- *   │ │List  │ Chat    │ │  Sandbox                    │
- *   │ └──────┴─────────┘ │                             │
- *   └────────────────────┴─────────────────────────────┘
- *
- * Collapsed: LEFT shrinks to avatar strip, RIGHT fills remaining.
+ * Panel size format (react-resizable-panels v4):
+ *   number  = pixels (e.g. 200 = 200px)
+ *   string  = percentage (e.g. "50" = 50%, "20%" = 20%)
  */
 export const Workspace = observer(function Workspace() {
   const [activeView, setActiveView] = useState("chat");
@@ -53,21 +45,21 @@ export const Workspace = observer(function Workspace() {
 
       {activeView === "chat" && (
         <Group
-          key={chatCollapsed ? "main-collapsed" : "main-expanded"}
+          key={chatCollapsed ? "main-c" : "main-e"}
           orientation="horizontal"
           className="min-h-0 flex-1"
           defaultLayout={
             chatCollapsed
-              ? {left: 4, right: 96}
-              : {left: 50, right: 50}
+              ? {left: "4", right: "96"}
+              : {left: "50", right: "50"}
           }
         >
           {/* ── LEFT: list | chat (or collapsed strip) ───────────────── */}
           <Panel
             id="left"
-            defaultSize={chatCollapsed ? 4 : 50}
-            minSize={chatCollapsed ? 4 : 15}
-            maxSize={chatCollapsed ? 4 : 80}
+            defaultSize={chatCollapsed ? "4" : "50"}
+            minSize={chatCollapsed ? "4" : "15"}
+            maxSize={chatCollapsed ? "4" : "80"}
           >
             {chatCollapsed ? (
               <div className="relative flex h-full flex-col items-center bg-card">
@@ -84,15 +76,15 @@ export const Workspace = observer(function Workspace() {
               <Group
                 orientation="horizontal"
                 className="h-full"
-                defaultLayout={{list: 20, chat: 80}}
+                defaultLayout={{list: "20", chat: "80"}}
               >
-                <Panel id="list" defaultSize={20} minSize={10} maxSize={40}>
+                <Panel id="list" defaultSize="20" minSize="10" maxSize="40">
                   <SessionList collapsed={false} />
                 </Panel>
                 <Separator className="sep-bar relative w-1.5 cursor-col-resize">
                   <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
                 </Separator>
-                <Panel id="chat" defaultSize={80} minSize={30}>
+                <Panel id="chat" defaultSize="80" minSize="30">
                   <ChatPane onToggleCollapse={toggleCollapse} />
                 </Panel>
               </Group>
@@ -104,7 +96,7 @@ export const Workspace = observer(function Workspace() {
           </Separator>
 
           {/* ── RIGHT: sandbox ───────────────────────────────────────── */}
-          <Panel id="right" defaultSize={50} minSize={20}>
+          <Panel id="right" defaultSize="50" minSize="20">
             <Playground />
           </Panel>
         </Group>
