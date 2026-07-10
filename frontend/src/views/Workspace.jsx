@@ -1,6 +1,6 @@
 import {observer} from "mobx-react-lite";
 import {useEffect, useState} from "react";
-import {Panel, PanelGroup, PanelResizeHandle} from "react-resizable-panels";
+import {Group, Panel, Separator} from "react-resizable-panels";
 import {PanelRightOpen} from "lucide-react";
 import {TopNav} from "@/components/TopNav";
 import {SessionList} from "@/views/SessionList";
@@ -65,7 +65,7 @@ export const Workspace = observer(function Workspace() {
       )}
 
       {activeView === "chat" && (
-        <PanelGroup direction="horizontal" className="min-h-0 flex-1">
+        <Group orientation="horizontal" className="min-h-0 flex-1">
           {/* ── LEFT: list | chat (or collapsed strip) ───────────────── */}
           <Panel
             key={chatCollapsed ? "left-c" : "left-e"}
@@ -85,29 +85,29 @@ export const Workspace = observer(function Workspace() {
                 <SessionList collapsed={true} />
               </div>
             ) : (
-              <PanelGroup direction="horizontal" className="h-full">
+              <Group orientation="horizontal" className="h-full">
                 <Panel defaultSize={20} minSize={10} maxSize={40}>
                   <SessionList collapsed={false} />
                 </Panel>
-                <PanelResizeHandle className="sep-bar relative w-1.5 cursor-col-resize">
+                <Separator className="sep-bar relative w-1.5 cursor-col-resize">
                   <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
-                </PanelResizeHandle>
+                </Separator>
                 <Panel defaultSize={80} minSize={30}>
                   <ChatPane onToggleCollapse={toggleCollapse} />
                 </Panel>
-              </PanelGroup>
+              </Group>
             )}
           </Panel>
 
-          <PanelResizeHandle className="sep-bar relative w-1.5 cursor-col-resize">
+          <Separator className="sep-bar relative w-1.5 cursor-col-resize">
             <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
-          </PanelResizeHandle>
+          </Separator>
 
           {/* ── RIGHT: sandbox ───────────────────────────────────────── */}
           <Panel defaultSize={50} minSize={20}>
             <Playground />
           </Panel>
-        </PanelGroup>
+        </Group>
       )}
     </div>
   );
