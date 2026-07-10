@@ -27,7 +27,6 @@ export function Playground() {
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const watchRef = useRef(null);
 
   const loadTree = useCallback(async () => {
     try {
