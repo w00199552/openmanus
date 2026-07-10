@@ -1,6 +1,6 @@
 import {observer} from "mobx-react-lite";
 import {useEffect, useState} from "react";
-import {Group, Panel, Separator} from "react-resizable-panels";
+import {Panel, PanelGroup, PanelResizeHandle} from "react-resizable-panels";
 import {PanelRightOpen} from "lucide-react";
 import {TopNav} from "@/components/TopNav";
 import {SessionList} from "@/views/SessionList";
@@ -10,18 +10,9 @@ import {AgentsView} from "@/views/AgentsView";
 import {SkillsView} from "@/views/SkillsView";
 import {ToolsView} from "@/views/ToolsView";
 
-// localStorage keys for persisted panel layouts (survive session switches).
-const LAYOUT_LEFT = "openmanus.layout.left"; // list | chat  (inside left half)
-const LAYOUT_MAIN = "openmanus.layout.main"; // leftHalf | rightHalf
-
-// one-time migration from the old "deepopen.*" namespace
-["deepopen.layout.left", "deepopen.layout.main"].forEach((oldK) => {
-  const newK = oldK.replace("deepopen", "openmanus");
-  if (localStorage.getItem(newK) == null) {
-    const v = localStorage.getItem(oldK);
-    if (v != null) localStorage.setItem(newK, v);
-  }
-});
+// localStorage keys for persisted panel layouts.
+const LAYOUT_LEFT = "openmanus.layout.left";
+const LAYOUT_MAIN = "openmanus.layout.main";
 
 function loadLayout(key, fallback) {
   try {
@@ -33,126 +24,90 @@ function loadLayout(key, fallback) {
 }
 
 /**
- * Workspace — the top-level app shell.
+ * Workspace — top-level app shell with resizable panels.
  *
  * Layout:
  *   ┌──────────────────────────────────────────────────┐
  *   │ TopNav                                            │
  *   ├────────────────────┬─────────────────────────────┤
- *   │ LEFT HALF (50%)    │ RIGHT HALF (50%)            │
- *   │ ┌──────┬─────────┐ │ ┌──────────┬──────────────┐ │
- *   │ │Agent/│ Chat     │ │ │ Sandbox  │ Playground   │ │
- *   │ │Team  │ (self-   │ │ │ (files)  │ (IDE/tools)  │ │
- *   │ │list  │ rendered)│ │ │          │              │ │
- *   │ └──────┴─────────┘ │ └──────────┴──────────────┘ │
+ *   │ LEFT (50%)         │ RIGHT (50%)                 │
+ *   │ ┌──────┬─────────┐ │                             │
+ *   │ │List  │ Chat    │ │  Sandbox                    │
+ *   │ └──────┴─────────┘ │                             │
  *   └────────────────────┴─────────────────────────────┘
  *
- * All separators are draggable. Layouts persist to localStorage so switching
- * sessions (New chat / History) does NOT reset dragged widths.
+ * Left can collapse to avatar strip width. All separators draggable.
  */
 export const Workspace = observer(function Workspace() {
   const [activeView, setActiveView] = useState("chat");
-  const [chatCollapsed, setChatCollapsed] = useState(() => localStorage.getItem("openmanus.chat.collapsed") === "true");
-  const [leftLayout, setLeftLayout] = useState(() =>
-    loadLayout(LAYOUT_LEFT, [16, 84]),
-  );
-  const [mainLayout, setMainLayout] = useState(() =>
-    loadLayout(LAYOUT_MAIN, [50, 50]),
+  const [chatCollapsed, setChatCollapsed] = useState(
+    () => localStorage.getItem("openmanus.chat.collapsed") === "true",
   );
 
-  // persist on change (debounced via the lib's own change cadence)
-  useEffect(() => {
-    localStorage.setItem(LAYOUT_LEFT, JSON.stringify(leftLayout));
-  }, [leftLayout]);
-  useEffect(() => {
-    localStorage.setItem(LAYOUT_MAIN, JSON.stringify(mainLayout));
-  }, [mainLayout]);
+  const toggleCollapse = () => {
+    const next = !chatCollapsed;
+    setChatCollapsed(next);
+    localStorage.setItem("openmanus.chat.collapsed", String(next));
+  };
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
       <TopNav activeView={activeView} onNavigate={setActiveView} />
 
-      {/* Agents view: full-width, no panels */}
       {activeView === "agents" && (
-        <div className="min-h-0 flex-1">
-          <AgentsView />
-        </div>
+        <div className="min-h-0 flex-1"><AgentsView /></div>
       )}
-
-      {/* Skills view: full-width, no panels */}
       {activeView === "skills" && (
-        <div className="min-h-0 flex-1">
-          <SkillsView />
-        </div>
+        <div className="min-h-0 flex-1"><SkillsView /></div>
       )}
-
-      {/* Tools view: full-width, no panels */}
       {activeView === "tools" && (
-        <div className="min-h-0 flex-1">
-          <ToolsView />
-        </div>
+        <div className="min-h-0 flex-1"><ToolsView /></div>
       )}
 
-      {/* Chat view: resizable panels */}
       {activeView === "chat" && (
-      <Group
-        key={chatCollapsed ? "main-collapsed" : "main-expanded"}
-        orientation="horizontal"
-        className="flex min-h-0 flex-1"
-        style={{ flexDirection: "row" }}
-        defaultLayout={chatCollapsed ? [8, 92] : (mainLayout || [50, 50])}
-        onLayoutChanged={(l) => { if (!chatCollapsed) setMainLayout(l); }}
-      >
-        {/* ── LEFT HALF: list | chat ─────────────────────────────────── */}
-        <Panel
-          id="left"
-          defaultSize={chatCollapsed ? 8 : 50}
-          minSize={chatCollapsed ? 8 : 20}
-          maxSize={chatCollapsed ? 8 : 80}
-        >
-          {chatCollapsed ? (
-            /* Collapsed: narrow avatar strip + expand button */
-            <div className="relative flex h-full flex-col items-center bg-card">
-              <button
-                onClick={() => { localStorage.setItem("openmanus.chat.collapsed", "false"); setChatCollapsed(false); }}
-                className="absolute right-0.5 top-0.5 z-10 rounded-md p-1 text-muted-foreground transition hover:bg-sidebar hover:text-foreground"
-                title="Expand chat"
-              >
-                <PanelRightOpen className="size-3.5"/>
-              </button>
-              <SessionList collapsed={true} />
-            </div>
-          ) : (
-            /* Expanded: resizable list | chat (original Group + Panel structure) */
-            <Group
-              orientation="horizontal"
-              className="flex h-full"
-              style={{ flexDirection: "row" }}
-              defaultLayout={leftLayout}
-              onLayoutChanged={(l) => setLeftLayout(l)}
-            >
-              <Panel id="list" minSize="10%" maxSize="45%">
-                <SessionList collapsed={false} />
-              </Panel>
-              <Separator className="sep-bar relative w-1.5 cursor-col-resize">
-                <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
-              </Separator>
-              <Panel id="chat" minSize="30%">
-                <ChatPane onToggleCollapse={() => { localStorage.setItem("openmanus.chat.collapsed", "true"); setChatCollapsed(true); }} />
-              </Panel>
-            </Group>
-          )}
-        </Panel>
+        <PanelGroup direction="horizontal" className="min-h-0 flex-1">
+          {/* ── LEFT: list | chat (or collapsed strip) ───────────────── */}
+          <Panel
+            key={chatCollapsed ? "left-c" : "left-e"}
+            defaultSize={chatCollapsed ? 4 : 50}
+            minSize={chatCollapsed ? 4 : 15}
+            maxSize={chatCollapsed ? 4 : 70}
+          >
+            {chatCollapsed ? (
+              <div className="relative flex h-full flex-col items-center bg-card">
+                <button
+                  onClick={toggleCollapse}
+                  className="absolute right-0.5 top-0.5 z-10 rounded-md p-1 text-muted-foreground transition hover:bg-sidebar hover:text-foreground"
+                  title="Expand"
+                >
+                  <PanelRightOpen className="size-3.5" />
+                </button>
+                <SessionList collapsed={true} />
+              </div>
+            ) : (
+              <PanelGroup direction="horizontal" className="h-full">
+                <Panel defaultSize={20} minSize={10} maxSize={40}>
+                  <SessionList collapsed={false} />
+                </Panel>
+                <PanelResizeHandle className="sep-bar relative w-1.5 cursor-col-resize">
+                  <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
+                </PanelResizeHandle>
+                <Panel defaultSize={80} minSize={30}>
+                  <ChatPane onToggleCollapse={toggleCollapse} />
+                </Panel>
+              </PanelGroup>
+            )}
+          </Panel>
 
-        <Separator className="sep-bar relative w-1.5 cursor-col-resize">
-          <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
-        </Separator>
+          <PanelResizeHandle className="sep-bar relative w-1.5 cursor-col-resize">
+            <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
+          </PanelResizeHandle>
 
-        {/* ── RIGHT HALF: sandbox | playground ───────────────────────── */}
-        <Panel id="right" defaultSize="50%" minSize="30%">
-          <Playground />
-        </Panel>
-      </Group>
+          {/* ── RIGHT: sandbox ───────────────────────────────────────── */}
+          <Panel defaultSize={50} minSize={20}>
+            <Playground />
+          </Panel>
+        </PanelGroup>
       )}
     </div>
   );
