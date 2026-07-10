@@ -2,7 +2,7 @@
 
 ONE dispatch tool handles both cases:
   - target_agent="TeamLeader" → create a team session + run a fresh TeamLeader
-  - target_agent="coder"/"researcher" → create a session + run a fresh agent
+  - target_agent="Coder"/"Researcher" → create a session + run a fresh agent
 
 Each dispatch builds a BRAND-NEW agent instance (build_agent) — never reuses a
 graph. This keeps every agent's run fully isolated (the cross-talk fix).
@@ -66,7 +66,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         """Delegate a task to another agent. Returns immediately; the agent
         runs in the background. Check read_mailbox later for the result.
 
-        - target_agent='coder'/'researcher': a single specialist runs the task.
+        - target_agent='Coder'/'Researcher': a single specialist runs the task.
         - target_agent='TeamLeader': a team is created; the leader coordinates
           further specialists. Use this for complex multi-step work.
         """
