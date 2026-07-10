@@ -1,10 +1,11 @@
-import {useState, useEffect, useCallback, useRef} from "react";
+import {useState, useEffect, useCallback} from "react";
 import {
   ChevronRight, ChevronDown, FileText, FileCode, File, Folder, FolderOpen,
   Save, RefreshCw, Loader2,
 } from "lucide-react";
 import MDEditor from "@uiw/react-md-editor";
 import {Highlight, themes} from "prism-react-renderer";
+import {Group, Panel, Separator} from "react-resizable-panels";
 
 import {cn} from "@/lib/utils";
 
@@ -141,26 +142,34 @@ export function Playground() {
         )}
       </div>
 
-      {/* tree + content */}
-      <div className="flex min-h-0 flex-1">
+      {/* tree + content (resizable) */}
+      <Group orientation="horizontal" className="min-h-0 flex-1">
         {/* file tree */}
-        <div className="w-56 shrink-0 overflow-y-auto border-r border-border/60 bg-sidebar/20 px-2 py-2">
-          {tree && (
-            <TreeNode node={tree} expanded={expanded} toggleDir={toggleDir} onSelect={onSelectFile} selectedPath={file?.path} depth={0}/>
-          )}
-        </div>
+        <Panel id="sandbox-tree" defaultSize="25%" minSize="12%" maxSize="50%">
+          <div className="h-full overflow-y-auto bg-sidebar/20 px-2 py-2">
+            {tree && (
+              <TreeNode node={tree} expanded={expanded} toggleDir={toggleDir} onSelect={onSelectFile} selectedPath={file?.path} depth={0}/>
+            )}
+          </div>
+        </Panel>
+
+        <Separator className="sep-bar relative w-1.5 cursor-col-resize">
+          <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
+        </Separator>
 
         {/* content */}
-        <div className="min-h-0 flex-1 overflow-auto" data-color-mode="dark">
-          {file ? (
-            <FileEditor file={file} draft={draft} setDraft={(v) => { setDraft(v); setDirty(true); }}/>
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              Select a file
-            </div>
-          )}
-        </div>
-      </div>
+        <Panel id="sandbox-content" minSize="30%">
+          <div className="h-full overflow-auto" data-color-mode="dark">
+            {file ? (
+              <FileEditor file={file} draft={draft} setDraft={(v) => { setDraft(v); setDirty(true); }}/>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Select a file
+              </div>
+            )}
+          </div>
+        </Panel>
+      </Group>
     </div>
   );
 }
