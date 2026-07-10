@@ -1,5 +1,5 @@
 import {observer} from "mobx-react-lite";
-import {useEffect, useState} from "react";
+import {useState} from "react";
 import {Group, Panel, Separator} from "react-resizable-panels";
 import {PanelRightOpen} from "lucide-react";
 import {TopNav} from "@/components/TopNav";
@@ -10,23 +10,10 @@ import {AgentsView} from "@/views/AgentsView";
 import {SkillsView} from "@/views/SkillsView";
 import {ToolsView} from "@/views/ToolsView";
 
-// localStorage keys for persisted panel layouts.
-const LAYOUT_LEFT = "openmanus.layout.left";
-const LAYOUT_MAIN = "openmanus.layout.main";
-
-function loadLayout(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 /**
- * Workspace — top-level app shell with resizable panels.
+ * Workspace — top-level app shell.
  *
- * Layout:
+ * Layout (expanded):
  *   ┌──────────────────────────────────────────────────┐
  *   │ TopNav                                            │
  *   ├────────────────────┬─────────────────────────────┤
@@ -36,7 +23,7 @@ function loadLayout(key, fallback) {
  *   │ └──────┴─────────┘ │                             │
  *   └────────────────────┴─────────────────────────────┘
  *
- * Left can collapse to avatar strip width. All separators draggable.
+ * Collapsed: LEFT shrinks to avatar strip, RIGHT fills remaining.
  */
 export const Workspace = observer(function Workspace() {
   const [activeView, setActiveView] = useState("chat");
@@ -65,13 +52,22 @@ export const Workspace = observer(function Workspace() {
       )}
 
       {activeView === "chat" && (
-        <Group orientation="horizontal" className="min-h-0 flex-1">
+        <Group
+          key={chatCollapsed ? "main-collapsed" : "main-expanded"}
+          orientation="horizontal"
+          className="min-h-0 flex-1"
+          defaultLayout={
+            chatCollapsed
+              ? {left: 4, right: 96}
+              : {left: 50, right: 50}
+          }
+        >
           {/* ── LEFT: list | chat (or collapsed strip) ───────────────── */}
           <Panel
-            key={chatCollapsed ? "left-c" : "left-e"}
+            id="left"
             defaultSize={chatCollapsed ? 4 : 50}
             minSize={chatCollapsed ? 4 : 15}
-            maxSize={chatCollapsed ? 4 : 70}
+            maxSize={chatCollapsed ? 4 : 80}
           >
             {chatCollapsed ? (
               <div className="relative flex h-full flex-col items-center bg-card">
@@ -85,14 +81,18 @@ export const Workspace = observer(function Workspace() {
                 <SessionList collapsed={true} />
               </div>
             ) : (
-              <Group orientation="horizontal" className="h-full">
-                <Panel defaultSize={20} minSize={10} maxSize={40}>
+              <Group
+                orientation="horizontal"
+                className="h-full"
+                defaultLayout={{list: 20, chat: 80}}
+              >
+                <Panel id="list" defaultSize={20} minSize={10} maxSize={40}>
                   <SessionList collapsed={false} />
                 </Panel>
                 <Separator className="sep-bar relative w-1.5 cursor-col-resize">
                   <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
                 </Separator>
-                <Panel defaultSize={80} minSize={30}>
+                <Panel id="chat" defaultSize={80} minSize={30}>
                   <ChatPane onToggleCollapse={toggleCollapse} />
                 </Panel>
               </Group>
@@ -104,7 +104,7 @@ export const Workspace = observer(function Workspace() {
           </Separator>
 
           {/* ── RIGHT: sandbox ───────────────────────────────────────── */}
-          <Panel defaultSize={50} minSize={20}>
+          <Panel id="right" defaultSize={50} minSize={20}>
             <Playground />
           </Panel>
         </Group>
