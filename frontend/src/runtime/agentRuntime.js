@@ -164,6 +164,15 @@ export class AgentRuntime {
         signal: ac.signal,
       });
       if (!res.ok) throw new Error(`send failed: ${res.status}`);
+
+      // If /cd changed workdir, notify the Playground to reload its tree.
+      try {
+        const body = await res.json();
+        if (body.action === "cd" && body.workdir) {
+          // dispatch a custom event for Playground to pick up
+          window.dispatchEvent(new CustomEvent("openmanus:workdir-changed", {detail: body.workdir}));
+        }
+      } catch { /* response might not be JSON for normal messages */ }
     } catch (e) {
       if (e.name === "AbortError") return; // user pressed stop
       runInAction(() => (this.error = e.message || String(e)));

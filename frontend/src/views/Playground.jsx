@@ -72,6 +72,13 @@ export function Playground() {
     loadTree();
   }, [loadTree]);
 
+  // listen for /cd workdir changes
+  useEffect(() => {
+    const handler = () => { loadTree(); setFile(null); };
+    window.addEventListener("openmanus:workdir-changed", handler);
+    return () => window.removeEventListener("openmanus:workdir-changed", handler);
+  }, [loadTree]);
+
   // watchdog: live refresh
   useEffect(() => {
     const es = new EventSource(`${BACKEND}/files/watch`);

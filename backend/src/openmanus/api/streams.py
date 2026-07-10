@@ -74,9 +74,12 @@ async def post_message(
 
     content = body.content.strip()
 
-    # ── /cd command: switch workdir ──────────────────────────────────────
-    if content.startswith("/cd ") or content == "/cd":
-        path = content[4:].strip() if len(content) > 3 else ""
+    # ── cd command: switch workdir (case-insensitive, optional /) ──────
+    lower = content.lower()
+    if lower.startswith("cd ") or lower == "cd" or lower.startswith("/cd ") or lower == "/cd":
+        # strip leading / then "cd" prefix
+        stripped = content.lstrip("/")
+        path = stripped[2:].strip()  # everything after "cd"
         if not path:
             # /cd with no arg: show current workdir
             cur = s.get("workdir") or "(not set)"
@@ -106,6 +109,10 @@ async def post_message(
         # update session workdir
         await session_store.update(session_id, workdir=str(target))
 
+        # update global settings.workdir so Playground /files/tree reflects it
+        from ..config import settings
+        settings.workdir = str(target)
+
         # rebuild agent with new workdir (so the backend root_dir matches)
         from ..agent_factory import build_agent
         agent = await build_agent(s.get("name") or "Manus", str(target))
@@ -127,9 +134,10 @@ async def post_message(
         await queue.put(E.done_sentinel(session_id))
         return {"ok": True, "session_id": session_id, "action": "cd", "workdir": str(target)}
 
-    # ── /skill command: inject skill content into the prompt ─────────────
-    if content.startswith("/skill ") or content == "/skill":
-        skill_name = content[7:].strip() if len(content) > 6 else ""
+    # ── skill command (case-insensitive, optional /) ───────────────────
+    if lower.startswith("skill ") or lower == "skill" or lower.startswith("/skill ") or lower == "/skill":
+        stripped = content.lstrip("/")
+        skill_name = stripped[5:].strip()  # everything after "skill"
 
         # /skill with no arg: list available skills
         if not skill_name:
@@ -137,7 +145,7 @@ async def post_message(
             queue = channels.get_queue(session_id)
             msg_id = f"skill-{uuid.uuid4().hex}"
             names = skill_loader.all_names()
-            text = "📋 Available skills:\n" + ("\n".join(f"  /skill {n}" for n in names) if names else "(no skills installed)")
+            text = "📋 Available skills:\n" + ("\n".join(f"  skill {n}" for n in names) if names else "(no skills installed)")
             await queue.put(E.frame(E.ev_message_start(session_id=session_id, message_id=msg_id, speaker="system")))
             await queue.put(E.frame(E.ev_text_delta(session_id=session_id, message_id=msg_id, speaker="system", delta=text)))
             await queue.put(E.frame(E.ev_message_end(session_id=session_id, message_id=msg_id, speaker="system")))
