@@ -63,7 +63,7 @@ export function Avatar({ seed, size = 36, className }) {
  * "a group of specialists" in one icon (rather than overlapping heads).
  *
  * Layout: a rounded container (accent-tinted) holding the members' mini
- * avatars in a 2-column grid. The teamleader is larger and centered; the
+ * avatars in a 2-column grid. The TeamLeader is larger and centered; the
  * others sit around it. Falls back to a "team" glyph if no members.
  *
  * @param {string[]} seeds  member identity seeds (1-4)
@@ -111,7 +111,7 @@ export function SessionAvatar({ session, size = 36 }) {
   if (session.kind === "team") {
     // members: prefer metadata.members if present, else a sensible default roster
     const members =
-      session.metadata?.members || ["teamleader", "researcher", "coder"];
+      session.metadata?.members || ["TeamLeader", "Researcher", "Coder"];
     return <TeamAvatar seeds={members} size={size} />;
   }
   // root + subagent: single face. Each session gets its OWN face via its id,

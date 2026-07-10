@@ -6,7 +6,7 @@ to (that's the dispatch tool's job) — it only knows how to RUN a given agent a
 translate its langgraph stream chunks into the unified event schema.
 
 Two entry points:
-  * ``run``    — run an agent the user is directly talking to (manus / teamleader
+  * ``run``    — run an agent the user is directly talking to (manus / TeamLeader
                  on a team session). Streams to the session's channel.
   * ``start``  — run a DISPATCHED agent (a coder/researcher kicked off by the
                  dispatch tool). Same streaming, PLUS records the outcome to the

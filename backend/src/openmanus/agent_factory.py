@@ -1,9 +1,9 @@
 """Agent factory — build fresh, independent agent instances by role.
 
-Every agent (manus / teamleader / coder / researcher) is created the SAME way:
+Every agent (manus / TeamLeader / Coder / Researcher) is created the SAME way:
 ``build_agent(role, workdir)`` returns a brand-new CompiledStateGraph with its
 own state. No agent instance is ever reused across runs — this is the cross-talk
-fix (previously sub-agents reused the teamleader's single graph, and concurrent
+fix (previously sub-agents reused the TeamLeader's single graph, and concurrent
 astreams on the same object contaminated each other).
 
 The checkpointer is SHARED (one DB) but each run uses its own thread_id

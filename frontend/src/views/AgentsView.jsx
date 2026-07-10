@@ -98,7 +98,7 @@ const AgentDetail = observer(function AgentDetail({name, onBack}) {
 
     if (s.loading || !s.current) return <Centered>Loading…</Centered>;
 
-    const isBuiltin = s.current.name === "manus" || s.current.name === "teamleader";
+    const isBuiltin = s.current.is_builtin || false;
 
     return (
         <div className="flex h-full">

@@ -1,6 +1,6 @@
 """AgentTrace middleware — logs every agent's model output + tool calls.
 
-Mounts on every agent (manus / teamleader / coder / researcher) to make the
+Mounts on every agent (manus / TeamLeader / Coder / Researcher) to make the
 full message flow visible in the backend log. This is the debugging tool for
 "why doesn't the frontend see coder's output" — you can trace exactly what each
 agent produces and which tools it calls.

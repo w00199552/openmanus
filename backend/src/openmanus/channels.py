@@ -5,7 +5,7 @@ dict[id]->Queue). Now there is ONE registry: every agent participant gets a
 channel (an ``asyncio.Queue``) the moment it's needed, and the SSE endpoint
 drains it.
 
-SCOPE FAN-IN (decision 1): "watch a team" = subscribe to the teamleader's
+SCOPE FAN-IN (decision 1): "watch a team" = subscribe to the TeamLeader's
 channel AND every descendant participant's channel, then forward every frame
 verbatim in arrival order. No cross-session reordering, no merging — each
 frame already carries ``session_id`` so the frontend splits it back into the
@@ -162,10 +162,10 @@ async def fan_in(
     * ``scope_id is None`` → single-session view: just drain ``focus_session_id``.
     * ``scope_id`` set → team view: drain the scope session itself PLUS every
       participant in that scope. The member list is **re-scanned periodically**
-      so sub-agents spawned mid-stream (teamleader delegating researcher/coder)
+      so sub-agents spawned mid-stream (TeamLeader delegating researcher/coder)
       are picked up automatically without the client reconnecting.
 
-    TERMINATION: the stream ends when the FOCUS session (the teamleader /
+    TERMINATION: the stream ends when the FOCUS session (the TeamLeader /
     orchestrator) signals done — when the orchestrator is finished, the team's
     work is finished. Members may still be draining when we close; that's fine,
     the client will have seen their frames already.

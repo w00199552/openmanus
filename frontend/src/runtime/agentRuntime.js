@@ -212,7 +212,7 @@ export class AgentRuntime {
       if (event.kind === "error") {
         this.error = event.message || "agent error";
       }
-      // In team view, a new member agent may appear mid-run (teamleader
+      // In team view, a new member agent may appear mid-run (TeamLeader
       // dispatches coder/researcher). Add its session_id directly to the member
       // cache so the merged view picks it up. We DON'T call _refreshScopeMembers
       // (which reads SessionStore.sessions) because that list may not have been
@@ -351,7 +351,7 @@ export class AgentRuntime {
       }
     }
     // Sort by createdAt so messages interleave across agents by time
-    // (teamleader → researcher → teamleader → coder ...), not grouped by agent.
+    // (TeamLeader → Researcher → TeamLeader → Coder ...), not grouped by agent.
     merged.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     return merged;
   }

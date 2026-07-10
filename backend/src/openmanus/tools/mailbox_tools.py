@@ -1,14 +1,14 @@
 """Mailbox tools: agent-to-agent messaging + the unified dispatch tool.
 
 ONE dispatch tool handles both cases:
-  - target_agent="teamleader" → create a team session + run a fresh teamleader
+  - target_agent="TeamLeader" → create a team session + run a fresh TeamLeader
   - target_agent="coder"/"researcher" → create a session + run a fresh agent
 
 Each dispatch builds a BRAND-NEW agent instance (build_agent) — never reuses a
 graph. This keeps every agent's run fully isolated (the cross-talk fix).
 
-manus only has this one dispatch tool (no separate dispatch_to_team).
-teamleader also has send_message / read_mailbox / whiteboard tools.
+Manus only has this one dispatch tool (no separate dispatch_to_team).
+TeamLeader also has send_message / read_mailbox / whiteboard tools.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ class DispatchInput(BaseModel):
     target_agent: str = Field(
         description=(
             "Which agent to delegate to: 'coder' (read/edit/run files), "
-            "'researcher' (read-only investigation), or 'teamleader' "
+            "'researcher' (read-only investigation), or 'TeamLeader' "
             "(coordinates a team for complex multi-step tasks)."
         )
     )
@@ -67,7 +67,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         runs in the background. Check read_mailbox later for the result.
 
         - target_agent='coder'/'researcher': a single specialist runs the task.
-        - target_agent='teamleader': a team is created; the leader coordinates
+        - target_agent='TeamLeader': a team is created; the leader coordinates
           further specialists. Use this for complex multi-step work.
         """
         if not agent_loader.get(target_agent):
@@ -82,7 +82,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         # same directory as the caller, not the global settings.workdir).
         caller_workdir = (caller_row or {}).get("workdir") or workdir
 
-        # ── teamleader: create a team session (scope root) ──
+        # ── TeamLeader: create a team session (scope root) ──
         if target_agent.lower() == "teamleader":
             team = await session_store.create(
                 kind="team",
@@ -92,7 +92,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
                 scope_id=None,
                 metadata={
                     "parent": caller_session_id,
-                    "members": ["teamleader", "researcher", "coder"],
+                    "members": ["TeamLeader", "Researcher", "Coder"],
                 },
             )
             team_id = team["id"]
