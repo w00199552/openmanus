@@ -3,7 +3,7 @@ import {createPortal} from "react-dom";
 import {observer} from "mobx-react-lite";
 import {
   ChevronRight, ChevronDown, FileText, FileCode, File, Folder, FolderOpen,
-  Save, RefreshCw, Loader2, FolderTree, FilePlus, FolderPlus, Trash2,
+  Save, Loader2, FolderTree, FilePlus, FolderPlus, Trash2, Plus,
 } from "lucide-react";
 import MDEditor from "@uiw/react-md-editor";
 import {Highlight, themes} from "prism-react-renderer";
@@ -12,6 +12,7 @@ import {Group, Panel, Separator} from "react-resizable-panels";
 import {useStore} from "@/hooks/useStore";
 import {cn} from "@/lib/utils";
 import {ConfirmDialog} from "@/components/sandbox/ConfirmDialog";
+import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover";
 
 /**
  * Playground — file tree + content editor for the Sandbox.
@@ -241,9 +242,6 @@ export const Playground = observer(function Playground() {
       {/* toolbar */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2">
         <span className="text-[12px] font-medium text-muted-foreground">Sandbox</span>
-        <button onClick={loadTree} className="rounded-md p-1 text-muted-foreground transition hover:bg-card hover:text-foreground" title="Refresh">
-          <RefreshCw className="size-3.5"/>
-        </button>
         <div className="flex-1"/>
         {file && (
           <>
@@ -268,11 +266,32 @@ export const Playground = observer(function Playground() {
         {/* file tree */}
         <Panel id="sandbox-tree" defaultSize="25%" minSize="12%" maxSize="50%">
           <div className="flex h-full flex-col bg-sidebar/20">
-            {/* current workdir header */}
+            {/* current workdir header + new file/folder dropdown */}
             {sandbox.workdir && (
               <div className="flex shrink-0 items-center gap-1.5 border-b border-border/40 px-3 py-1.5" title={sandbox.workdir}>
                 <FolderTree className="size-3.5 shrink-0 text-sky-400/70"/>
-                <span className="truncate text-[11px] font-medium text-foreground/80">{sandbox.workdir}</span>
+                <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground/80">{sandbox.workdir}</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="shrink-0 rounded-md p-0.5 text-muted-foreground/60 transition hover:bg-sidebar/40 hover:text-foreground" title="New File / Folder">
+                      <Plus className="size-3.5"/>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-40 p-1">
+                    <button
+                      onClick={() => setModal({mode: "newFile", node: {type: "dir", path: "", name: ""}})}
+                      className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-popover-foreground outline-none transition hover:bg-accent/15 hover:text-accent"
+                    >
+                      <FilePlus className="size-3.5"/> New File
+                    </button>
+                    <button
+                      onClick={() => setModal({mode: "newDir", node: {type: "dir", path: "", name: ""}})}
+                      className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-popover-foreground outline-none transition hover:bg-accent/15 hover:text-accent"
+                    >
+                      <FolderPlus className="size-3.5"/> New Folder
+                    </button>
+                  </PopoverContent>
+                </Popover>
               </div>
             )}
             <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
