@@ -248,7 +248,7 @@ function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth, chi
       <button
         onClick={() => isDir ? toggleDir(node.path) : onSelect(node.path)}
         className={cn(
-          "flex w-full items-center gap-1 rounded-md px-2 py-1 text-[12px] transition",
+          "flex w-full items-center gap-1 rounded-md px-2 py-1 text-[13px] transition",
           !isDir && selectedPath === node.path
             ? "bg-accent/10 text-accent"
             : "text-muted-foreground/90 hover:bg-sidebar/40 hover:text-foreground",
@@ -258,11 +258,11 @@ function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth, chi
         {isDir ? (
           <>
             {isLoading ? (
-              <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground/50"/>
+              <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground/50"/>
             ) : (
-              isOpen ? <ChevronDown className="size-3 shrink-0"/> : <ChevronRight className="size-3 shrink-0"/>
+              isOpen ? <ChevronDown className="size-3.5 shrink-0"/> : <ChevronRight className="size-3.5 shrink-0"/>
             )}
-            {isOpen ? <FolderOpen className="size-3 shrink-0 text-sky-400/70"/> : <Folder className="size-3 shrink-0 text-sky-400/70"/>}
+            {isOpen ? <FolderOpen className="size-3.5 shrink-0 text-sky-400/70"/> : <Folder className="size-3.5 shrink-0 text-sky-400/70"/>}
           </>
         ) : (
           <>
@@ -285,9 +285,9 @@ function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth, chi
 
 function FileIcon({name}) {
   const ext = name.split(".").pop()?.toLowerCase();
-  if (ext === "md") return <FileText className="size-3 shrink-0 text-accent/60"/>;
-  if (["py", "js", "jsx", "ts", "tsx", "sh", "json", "yaml", "yml", "css"].includes(ext)) return <FileCode className="size-3 shrink-0 text-muted-foreground/50"/>;
-  return <File className="size-3 shrink-0 text-muted-foreground/40"/>;
+  if (ext === "md") return <FileText className="size-3.5 shrink-0 text-accent/60"/>;
+  if (["py", "js", "jsx", "ts", "tsx", "sh", "json", "yaml", "yml", "css"].includes(ext)) return <FileCode className="size-3.5 shrink-0 text-muted-foreground/50"/>;
+  return <File className="size-3.5 shrink-0 text-muted-foreground/40"/>;
 }
 
 // ─── File editor ────────────────────────────────────────────────────────────
