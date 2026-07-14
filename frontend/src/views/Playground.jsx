@@ -3,14 +3,14 @@ import {createPortal} from "react-dom";
 import {observer} from "mobx-react-lite";
 import {
   ChevronRight, ChevronDown, FileText, FileCode, File, Folder, FolderOpen,
-  Save, Loader2, FolderTree, FilePlus, FolderPlus, Trash2, Plus,
+  Save, Loader2, FolderTree, FilePlus, FolderPlus, Trash2, Plus, ClipboardCopy, Check,
 } from "lucide-react";
 import MDEditor from "@uiw/react-md-editor";
 import {Highlight, themes} from "prism-react-renderer";
 import {Group, Panel, Separator} from "react-resizable-panels";
 
 import {useStore} from "@/hooks/useStore";
-import {cn} from "@/lib/utils";
+import {cn, joinAbsPath, copyText} from "@/lib/utils";
 import {ConfirmDialog} from "@/components/sandbox/ConfirmDialog";
 import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover";
 
@@ -305,6 +305,7 @@ export const Playground = observer(function Playground() {
                   childrenByDir={childrenByDir}
                   loadingByDir={loadingByDir}
                   onContext={setModal}
+                  workdir={sandbox.workdir}
                 />
               )}
             </div>
@@ -366,10 +367,22 @@ export const Playground = observer(function Playground() {
  * This avoids Radix ContextMenuTrigger's per-child event listener binding
  * which caused UI freezes when the tree re-renders (dozens of nodes).
  */
-function TreeContainer({node, expanded, toggleDir, onSelect, selectedPath, childrenByDir, loadingByDir, onContext}) {
+function TreeContainer({node, expanded, toggleDir, onSelect, selectedPath, childrenByDir, loadingByDir, onContext, workdir}) {
   const [menu, setMenu] = useState(null); // {x, y, node} | null
+  const [copied, setCopied] = useState(false);
 
   const childProps = {expanded, toggleDir, onSelect, selectedPath, childrenByDir, loadingByDir};
+
+  // Copy the node's absolute path (workdir + relative path) to the clipboard.
+  // Shows a transient "Copied!" state on the menu item for feedback.
+  const handleCopyPath = async () => {
+    if (!menu?.node) return;
+    const abs = joinAbsPath(workdir || "", menu.node.path);
+    await copyText(abs);
+    setCopied(true);
+    window.setTimeout(() => setMenu(null), 650);
+    window.setTimeout(() => setCopied(false), 700);
+  };
 
   const handleContextMenu = (e) => {
     e.preventDefault();
@@ -429,7 +442,15 @@ function TreeContainer({node, expanded, toggleDir, onSelect, selectedPath, child
             </>
           )}
           {menu.node && (
-            <MenuItem icon={Trash2} label="Delete" danger onClick={() => { onContext({mode: "delete", node: menu.node}); setMenu(null); }}/>
+            <>
+              <MenuItem
+                icon={copied ? Check : ClipboardCopy}
+                label={copied ? "Copied!" : "Copy Path"}
+                onClick={handleCopyPath}
+              />
+              <MenuDivider/>
+              <MenuItem icon={Trash2} label="Delete" danger onClick={() => { onContext({mode: "delete", node: menu.node}); setMenu(null); }}/>
+            </>
           )}
         </div>,
         document.body,
