@@ -67,20 +67,42 @@ class CdBody(BaseModel):
 async def cd_session(session_id: str, body: CdBody) -> dict:
     """Switch a session's workdir. Does NOT trigger the agent — just updates
     the sandbox root + rebuilds the agent with the new backend root_dir.
+
+    Behaves like a shell ``cd``:
+      ``cd <subdir>``  — relative to current workdir
+      ``cd ..``        — go up one level (stays at drive root if already there)
+      ``cd D:\\path``  — absolute path
+      ``cd``           — print current workdir (pwd)
     """
     s = await session_store.get(session_id)
     if not s:
         raise HTTPException(status_code=404, detail="session not found")
 
+    from pathlib import Path
+
+    cur = Path(s.get("workdir") or settings.workdir)
     path = body.path.strip()
+
+    # cd with no args → print current workdir
     if not path:
-        cur = s.get("workdir") or settings.workdir
         return {"ok": True, "workdir": str(cur), "action": "pwd"}
 
-    from pathlib import Path
-    target = Path(path).expanduser().resolve()
+    # Resolve: absolute stays absolute; relative joins current workdir
+    raw = Path(path).expanduser()
+    target = raw if raw.is_absolute() else cur / raw
+
+    # resolve() collapses ".." naturally; at a Windows drive root (D:\),
+    # going up keeps you at D:\ — exactly like cmd.
+    try:
+        target = target.resolve()
+    except (OSError, RuntimeError):
+        target = target.absolute()
+
     if not target.exists() or not target.is_dir():
-        raise HTTPException(status_code=400, detail=f"path does not exist or not a directory: {target}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"path does not exist or not a directory: {path}",
+        )
 
     # update session + global workdir
     await session_store.update(session_id, workdir=str(target))
@@ -88,12 +110,7 @@ async def cd_session(session_id: str, body: CdBody) -> dict:
 
     # rebuild agent with new workdir
     from ..agent_factory import build_agent
-    agent = await build_agent(s.get("name") or "Manus", str(target))
-
-    # store rebuilt agent so next message uses it
-    # (post_message uses _resolve_agent → app.state.agent, so update that too)
-    # But app.state.agent is shared — for now we store per-session via a simple dict
-    # Actually post_message already rebuilds agent from session workdir, so no extra work needed.
+    await build_agent(s.get("name") or "Manus", str(target))
 
     return {"ok": True, "workdir": str(target), "action": "cd"}
 
