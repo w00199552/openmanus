@@ -111,9 +111,10 @@ export const Playground = observer(function Playground() {
     }
   }, [runtime.workdir, loadTree]);
 
-  // watchdog: live refresh
+  // watchdog: live refresh — reconnect when workdir changes (per-session)
   useEffect(() => {
-    const es = new EventSource(`${BACKEND}/files/watch`);
+    const wdParam = runtime.workdir ? `?workdir=${encodeURIComponent(runtime.workdir)}` : "";
+    const es = new EventSource(`${BACKEND}/files/watch${wdParam}`);
     es.onmessage = (ev) => {
       try {
         const evt = JSON.parse(ev.data);
@@ -129,7 +130,7 @@ export const Playground = observer(function Playground() {
       } catch { /* ignore */ }
     };
     return () => es.close();
-  }, [loadTree, loadFile, file, dirty]);
+  }, [runtime.workdir, loadTree, loadFile, file, dirty]);
 
   const toggleDir = (path) => {
     const wasOpen = expanded.has(path);

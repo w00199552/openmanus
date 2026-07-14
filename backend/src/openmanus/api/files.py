@@ -166,86 +166,151 @@ async def write_file(body: WriteFileBody) -> dict:
 
 # ── Watchdog: file change events via SSE ────────────────────────────────────
 
-_watcher_started = False
-_change_queue: asyncio.Queue | None = None
+import threading
 
 
-def _start_watcher():
-    """Start a watchdog observer that pushes change events to the SSE queue."""
-    global _watcher_started, _change_queue
-    if _watcher_started:
-        return
-    _watcher_started = True
+class _FileWatcher:
+    """Single-directory watchdog.
 
-    try:
-        from watchdog.observers import Observer
+    Only the **currently active** workdir is watched — matching the one
+    session the user is looking at.  When the frontend switches session it
+    closes the SSE connection (``useEffect`` cleanup) and opens a new one
+    with a different ``?workdir=``, which triggers ``set_target`` to
+    re-point the observer.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._observer = None
+        self._watch = None          # active ObservedWatch (or None)
+        self._wd_resolved: Path | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._queue: asyncio.Queue | None = None  # current subscriber's queue
+
+    # ── lifecycle ──────────────────────────────────────────────────────────
+
+    def _ensure_observer(self):
+        if self._observer is not None:
+            return
+        try:
+            from watchdog.observers import Observer
+        except ImportError:
+            logger.warning("watchdog not installed — file watch disabled (pip install watchdog)")
+            return
+        self._observer = Observer(daemon=True)
+        self._observer.start()
+        logger.info("watchdog observer started")
+
+    def _make_handler(self):
         from watchdog.events import FileSystemEventHandler
 
-        wd = _workdir()
+        wd = self._wd_resolved
+        hub = self
 
         class Handler(FileSystemEventHandler):
             def _push(self, event_type: str, src_path: str):
-                if _change_queue is None:
+                if hub._queue is None or hub._loop is None or wd is None:
                     return
-                rel = str(Path(src_path).resolve().relative_to(wd.resolve())).replace("\\", "/")
-                # skip hidden + junk
+                try:
+                    rel = str(Path(src_path).resolve().relative_to(wd)).replace("\\", "/")
+                except (ValueError, OSError):
+                    return
                 if any(part.startswith(".") or part == "__pycache__" or part == "node_modules"
                        for part in Path(rel).parts):
                     return
-                try:
-                    # watchdog runs in its own thread → use call_soon_threadsafe
-                    loop = asyncio.get_event_loop()
-                    loop.call_soon_threadsafe(
-                        _change_queue.put_nowait,
-                        {"type": event_type, "path": rel},
-                    )
-                except Exception:  # noqa: BLE001
-                    pass
+                hub._loop.call_soon_threadsafe(
+                    hub._queue.put_nowait, {"type": event_type, "path": rel},
+                )
 
             def on_created(self, event):
-                if not event.is_directory:
-                    self._push("created", event.src_path)
+                self._push("created", event.src_path)
 
             def on_modified(self, event):
-                if not event.is_directory:
-                    self._push("modified", event.src_path)
+                self._push("modified", event.src_path)
 
             def on_deleted(self, event):
-                if not event.is_directory:
-                    self._push("deleted", event.src_path)
+                self._push("deleted", event.src_path)
 
             def on_moved(self, event):
-                if not event.is_directory:
-                    self._push("moved", event.src_path)
+                self._push("moved", event.src_path)
 
-        observer = Observer()
-        observer.schedule(Handler(), str(wd), recursive=True)
-        observer.start()
-        logger.info("file watcher started on %s", wd)
-    except ImportError:
-        logger.warning("watchdog not installed — file watch disabled (pip install watchdog)")
-    except Exception:  # noqa: BLE001
-        logger.exception("failed to start file watcher")
+        return Handler()
+
+    # ── public API ─────────────────────────────────────────────────────────
+
+    def start(self, wd_str: str, loop: asyncio.AbstractEventLoop) -> asyncio.Queue:
+        """Begin watching *wd_str*. Returns the SSE queue for this subscriber."""
+        wd_resolved = Path(wd_str).resolve()
+        q: asyncio.Queue = asyncio.Queue()
+
+        with self._lock:
+            self._ensure_observer()
+            self._loop = loop
+            self._queue = q
+
+            # re-point if the target changed (or first time)
+            if self._observer is not None and wd_resolved != self._wd_resolved:
+                self._stop_watch()
+                self._wd_resolved = wd_resolved
+                try:
+                    self._watch = self._observer.schedule(
+                        self._make_handler(), str(wd_resolved), recursive=True,
+                    )
+                    logger.info("file watcher → %s", wd_resolved)
+                except Exception:  # noqa: BLE001
+                    logger.exception("failed to start watcher on %s", wd_resolved)
+                    self._watch = None
+
+        return q
+
+    def _stop_watch(self):
+        if self._watch is not None and self._observer is not None:
+            try:
+                self._observer.unschedule(self._watch)
+            except Exception:  # noqa: BLE001
+                pass
+        self._watch = None
+
+    def stop(self):
+        """Called on SSE disconnect — stop watching."""
+        with self._lock:
+            self._queue = None
+            self._stop_watch()
+            self._wd_resolved = None
+
+
+_watcher = _FileWatcher()
 
 
 @router.get("/watch")
-async def watch_files(request: Request) -> StreamingResponse:
-    """SSE stream of file change events (created/modified/deleted/moved)."""
-    global _change_queue
-    _change_queue = asyncio.Queue()
-    _start_watcher()
+async def watch_files(
+    request: Request,
+    workdir: str | None = Query(None),
+) -> StreamingResponse:
+    """SSE stream of file change events (created/modified/deleted/moved).
+
+    Watches only the active workdir (``?workdir=``).  The frontend opens a
+    fresh connection when the user switches session, which re-points the
+    observer to the new workdir.
+    """
+    wd_str = workdir or settings.workdir
+    loop = asyncio.get_event_loop()
+    q = _watcher.start(wd_str, loop)
 
     import json
 
     async def event_stream():
-        while True:
-            if await request.is_disconnected():
-                break
-            try:
-                event = await asyncio.wait_for(_change_queue.get(), timeout=15)
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-            except asyncio.TimeoutError:
-                yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=15)
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+        finally:
+            _watcher.stop()
 
     return StreamingResponse(
         event_stream(),
