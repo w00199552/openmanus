@@ -107,6 +107,15 @@ export class AgentRuntime {
   async send(sessionId, text) {
     if (!text || !text.trim()) return;
 
+    // ── cd command: dedicated API, doesn't trigger agent ──────────────
+    const trimmed = text.trim();
+    const lower = trimmed.toLowerCase();
+    if (lower === "cd" || lower.startsWith("cd ")) {
+      const path = trimmed.slice(2).trim(); // everything after "cd"
+      await this._cd(sessionId, path, text);
+      return;
+    }
+
     // Snapshot session ids BEFORE the turn — used by _afterDelegation to detect
     // NEW sessions created during this turn (dispatch may create team/subagent
     // sessions, and the session list may get reloaded mid-turn, so we can't
@@ -164,15 +173,6 @@ export class AgentRuntime {
         signal: ac.signal,
       });
       if (!res.ok) throw new Error(`send failed: ${res.status}`);
-
-      // If /cd changed workdir, notify the Playground to reload its tree.
-      try {
-        const body = await res.json();
-        if (body.action === "cd" && body.workdir) {
-          // dispatch a custom event for Playground to pick up
-          window.dispatchEvent(new CustomEvent("openmanus:workdir-changed", {detail: body.workdir}));
-        }
-      } catch { /* response might not be JSON for normal messages */ }
     } catch (e) {
       if (e.name === "AbortError") return; // user pressed stop
       runInAction(() => (this.error = e.message || String(e)));
@@ -180,6 +180,60 @@ export class AgentRuntime {
       return;
     } finally {
       delete this._sendAborts[sessionId];
+    }
+  }
+
+  /** cd command: switch workdir via dedicated API (doesn't trigger agent). */
+  async _cd(sessionId, path, originalText) {
+    // optimistic user bubble
+    this.messageStore.appendMessage(sessionId, {
+      id: `u-${Date.now()}`,
+      role: "user",
+      speaker: "user",
+      content: [{ type: "text", text: originalText }],
+      status: "complete",
+      createdAt: Date.now(),
+    });
+
+    try {
+      const res = await fetch(`${BACKEND}/sessions/${encodeURIComponent(sessionId)}/cd`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({path}),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `cd failed: ${res.status}`);
+      }
+      const body = await res.json();
+
+      // insert system response message
+      const msgId = `cd-${Date.now()}`;
+      const reply = body.action === "pwd"
+        ? `📁 Current workdir: ${body.workdir}`
+        : `📁 Workdir switched to: ${body.workdir}`;
+      this.messageStore.appendMessage(sessionId, {
+        id: msgId,
+        role: "assistant",
+        speaker: "system",
+        content: [{ type: "text", text: reply }],
+        status: "complete",
+        createdAt: Date.now(),
+      });
+
+      // notify Playground to refresh tree
+      if (body.workdir) {
+        window.dispatchEvent(new CustomEvent("openmanus:workdir-changed", {detail: body.workdir}));
+      }
+    } catch (e) {
+      this.messageStore.appendMessage(sessionId, {
+        id: `cd-err-${Date.now()}`,
+        role: "assistant",
+        speaker: "system",
+        content: [{ type: "text", text: `❌ ${e.message}` }],
+        status: "complete",
+        createdAt: Date.now(),
+      });
     }
   }
 

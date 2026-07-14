@@ -35,6 +35,7 @@ from typing import Any
 
 from .. import event_schema as E
 from ..channels import channels, drain_single, drain_sessions, fan_in
+from ..config import settings
 from ..db import session_store
 from ..engine import engine
 
@@ -58,81 +59,57 @@ async def _resolve_agent(request: Request, session: dict[str, Any]) -> Any:
     return request.app.state.agent
 
 
+class CdBody(BaseModel):
+    path: str = ""
+
+
+@router.post("/sessions/{session_id}/cd")
+async def cd_session(session_id: str, body: CdBody) -> dict:
+    """Switch a session's workdir. Does NOT trigger the agent — just updates
+    the sandbox root + rebuilds the agent with the new backend root_dir.
+    """
+    s = await session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    path = body.path.strip()
+    if not path:
+        cur = s.get("workdir") or settings.workdir
+        return {"ok": True, "workdir": str(cur), "action": "pwd"}
+
+    from pathlib import Path
+    target = Path(path).expanduser().resolve()
+    if not target.exists() or not target.is_dir():
+        raise HTTPException(status_code=400, detail=f"path does not exist or not a directory: {target}")
+
+    # update session + global workdir
+    await session_store.update(session_id, workdir=str(target))
+    settings.workdir = str(target)
+
+    # rebuild agent with new workdir
+    from ..agent_factory import build_agent
+    agent = await build_agent(s.get("name") or "Manus", str(target))
+
+    # store rebuilt agent so next message uses it
+    # (post_message uses _resolve_agent → app.state.agent, so update that too)
+    # But app.state.agent is shared — for now we store per-session via a simple dict
+    # Actually post_message already rebuilds agent from session workdir, so no extra work needed.
+
+    return {"ok": True, "workdir": str(target), "action": "cd"}
+
+
 @router.post("/sessions/{session_id}/messages")
 async def post_message(
     session_id: str, body: PostMessage, request: Request
 ) -> dict:
     """Send a user message and TRIGGER the agent run (background, non-blocking).
-
-    Special commands (processed before the agent runs):
-      /cd <path>   — switch this session's workdir (sandbox root).
-                     Affects all subsequent dispatch + file operations.
     """
     s = await session_store.get(session_id)
     if not s:
         raise HTTPException(status_code=404, detail="session not found")
 
     content = body.content.strip()
-
-    # ── cd command: switch workdir (case-insensitive, optional /) ──────
     lower = content.lower()
-    if lower.startswith("cd ") or lower == "cd" or lower.startswith("/cd ") or lower == "/cd":
-        # strip leading / then "cd" prefix
-        stripped = content.lstrip("/")
-        path = stripped[2:].strip()  # everything after "cd"
-        if not path:
-            # /cd with no arg: show current workdir
-            cur = s.get("workdir") or "(not set)"
-            queue = channels.get_queue(session_id)
-            await queue.put(E.frame(E.ev_message_start(
-                session_id=session_id, message_id=f"cd-{uuid.uuid4().hex}",
-                speaker="system",
-            )))
-            await queue.put(E.frame(E.ev_text_delta(
-                session_id=session_id, message_id=f"cd-resp",
-                speaker="system", delta=f"📁 Current workdir: {cur}",
-            )))
-            await queue.put(E.frame(E.ev_message_end(
-                session_id=session_id, message_id=f"cd-resp",
-                speaker="system",
-            )))
-            await queue.put(E.frame(E.ev_done(session_id=session_id)))
-            await queue.put(E.done_sentinel(session_id))
-            return {"ok": True, "session_id": session_id, "action": "pwd"}
-
-        # expand + validate
-        from pathlib import Path
-        target = Path(path).expanduser().resolve()
-        if not target.exists() or not target.is_dir():
-            raise HTTPException(status_code=400, detail=f"path does not exist or not a directory: {target}")
-
-        # update session workdir
-        await session_store.update(session_id, workdir=str(target))
-
-        # update global settings.workdir so Playground /files/tree reflects it
-        from ..config import settings
-        settings.workdir = str(target)
-
-        # rebuild agent with new workdir (so the backend root_dir matches)
-        from ..agent_factory import build_agent
-        agent = await build_agent(s.get("name") or "Manus", str(target))
-
-        # push a confirmation message to the stream
-        queue = channels.get_queue(session_id)
-        msg_id = f"cd-{uuid.uuid4().hex}"
-        await queue.put(E.frame(E.ev_message_start(
-            session_id=session_id, message_id=msg_id, speaker="system",
-        )))
-        await queue.put(E.frame(E.ev_text_delta(
-            session_id=session_id, message_id=msg_id, speaker="system",
-            delta=f"📁 Workdir switched to: {target}",
-        )))
-        await queue.put(E.frame(E.ev_message_end(
-            session_id=session_id, message_id=msg_id, speaker="system",
-        )))
-        await queue.put(E.frame(E.ev_done(session_id=session_id)))
-        await queue.put(E.done_sentinel(session_id))
-        return {"ok": True, "session_id": session_id, "action": "cd", "workdir": str(target)}
 
     # ── skill command (case-insensitive, optional /) ───────────────────
     if lower.startswith("skill ") or lower == "skill" or lower.startswith("/skill ") or lower == "/skill":
