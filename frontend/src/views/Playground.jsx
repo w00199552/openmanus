@@ -1,4 +1,4 @@
-import {useState, useEffect, useCallback} from "react";
+import {useState, useEffect, useCallback, useRef} from "react";
 import {observer} from "mobx-react-lite";
 import {
   ChevronRight, ChevronDown, FileText, FileCode, File, Folder, FolderOpen,
@@ -36,6 +36,12 @@ export const Playground = observer(function Playground() {
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Refs for SSE callback (avoids re-subscribing watchdog when file/dirty change)
+  const fileRef = useRef(file);
+  const dirtyRef = useRef(dirty);
+  fileRef.current = file;
+  dirtyRef.current = dirty;
 
   const loadTree = useCallback(async () => {
     try {
@@ -111,7 +117,8 @@ export const Playground = observer(function Playground() {
     }
   }, [runtime.workdir, loadTree]);
 
-  // watchdog: live refresh — reconnect when workdir changes (per-session)
+  // watchdog: live refresh — reconnect ONLY when workdir changes (per-session)
+  // file/dirty are accessed via refs so we don't re-subscribe on every keystroke
   useEffect(() => {
     const wdParam = runtime.workdir ? `?workdir=${encodeURIComponent(runtime.workdir)}` : "";
     const es = new EventSource(`${BACKEND}/files/watch${wdParam}`);
@@ -124,13 +131,16 @@ export const Playground = observer(function Playground() {
           loadTree();
         }
         // refresh open file if it was modified externally
-        if (evt.type === "modified" && file && evt.path === file.path && !dirty) {
-          loadFile(file.path);
+        if (evt.type === "modified") {
+          const f = fileRef.current;
+          if (f && evt.path === f.path && !dirtyRef.current) {
+            loadFile(f.path);
+          }
         }
       } catch { /* ignore */ }
     };
     return () => es.close();
-  }, [runtime.workdir, loadTree, loadFile, file, dirty]);
+  }, [runtime.workdir, loadTree, loadFile]);
 
   const toggleDir = (path) => {
     const wasOpen = expanded.has(path);

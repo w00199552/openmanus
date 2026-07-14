@@ -239,27 +239,37 @@ class _FileWatcher:
     # ── public API ─────────────────────────────────────────────────────────
 
     def start(self, wd_str: str, loop: asyncio.AbstractEventLoop) -> asyncio.Queue:
-        """Begin watching *wd_str*. Returns the SSE queue for this subscriber."""
+        """Begin watching *wd_str*. Returns the SSE queue for this subscriber.
+
+        Only one subscriber (the active session) is supported at a time.
+        If called with the same workdir (e.g. React reconnect), the queue is
+        replaced without re-scheduling the observer.  If the workdir changed,
+        the observer is re-pointed.
+        """
         wd_resolved = Path(wd_str).resolve()
         q: asyncio.Queue = asyncio.Queue()
 
         with self._lock:
             self._ensure_observer()
             self._loop = loop
-            self._queue = q
 
-            # re-point if the target changed (or first time)
-            if self._observer is not None and wd_resolved != self._wd_resolved:
+            if wd_resolved != self._wd_resolved:
+                # target changed → re-point
                 self._stop_watch()
                 self._wd_resolved = wd_resolved
-                try:
-                    self._watch = self._observer.schedule(
-                        self._make_handler(), str(wd_resolved), recursive=True,
-                    )
-                    logger.info("file watcher → %s", wd_resolved)
-                except Exception:  # noqa: BLE001
-                    logger.exception("failed to start watcher on %s", wd_resolved)
-                    self._watch = None
+                self._queue = q
+                if self._observer is not None:
+                    try:
+                        self._watch = self._observer.schedule(
+                            self._make_handler(), str(wd_resolved), recursive=True,
+                        )
+                        logger.info("file watcher → %s", wd_resolved)
+                    except Exception:  # noqa: BLE001
+                        logger.exception("failed to start watcher on %s", wd_resolved)
+                        self._watch = None
+            else:
+                # same target → just swap the queue (reconnect)
+                self._queue = q
 
         return q
 
@@ -271,9 +281,15 @@ class _FileWatcher:
                 pass
         self._watch = None
 
-    def stop(self):
-        """Called on SSE disconnect — stop watching."""
+    def stop(self, q: asyncio.Queue):
+        """Called on SSE disconnect.
+
+        Only tears down the watch if *q* is still the active queue — avoids
+        a stale/reconnecting connection from killing the current one.
+        """
         with self._lock:
+            if self._queue is not q:
+                return  # we've been superseded by a newer subscriber
             self._queue = None
             self._stop_watch()
             self._wd_resolved = None
@@ -310,7 +326,7 @@ async def watch_files(
                 except asyncio.TimeoutError:
                     yield f"data: {json.dumps({'type': 'ping'})}\n\n"
         finally:
-            _watcher.stop()
+            _watcher.stop(q)
 
     return StreamingResponse(
         event_stream(),
