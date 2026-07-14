@@ -98,6 +98,13 @@ export class AgentRuntime {
   setActive(sessionId, scopeId = null) {
     this.activeSessionId = sessionId;
     this.activeScopeId = scopeId;
+    // Update workdir to match the selected session (so Sandbox follows)
+    if (this._sessionStore) {
+      const sess = this._sessionStore.sessions.find((s) => s.id === sessionId);
+      if (sess && sess.workdir) {
+        this.workdir = sess.workdir;
+      }
+    }
     // Rebuild the live subscription for the new view (async history load first).
     this._resubscribe();
   }
@@ -223,9 +230,15 @@ export class AgentRuntime {
         createdAt: Date.now(),
       });
 
-      // update workdir observable (Playground watches this via mobx)
-      if (body.workdir) {
-        runInAction(() => { this.workdir = body.workdir; });
+      // update workdir observable + session list (so setActive reads it later)
+      if (body.workdir && body.action === "cd") {
+        runInAction(() => {
+          this.workdir = body.workdir;
+          if (this._sessionStore) {
+            const sess = this._sessionStore.sessions.find((s) => s.id === sessionId);
+            if (sess) sess.workdir = body.workdir;
+          }
+        });
       }
     } catch (e) {
       this.messageStore.appendMessage(sessionId, {

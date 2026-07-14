@@ -63,7 +63,7 @@ async def get_tree() -> FileNode:
             type="dir" if path.is_dir() else "file",
             size=path.stat().st_size if path.is_file() else 0,
         )
-        if path.is_dir() and depth < 5:
+        if path.is_dir() and depth < 2:
             try:
                 for child in sorted(path.iterdir(), key=lambda c: (not c.is_dir(), c.name)):
                     # skip hidden + common junk
