@@ -197,7 +197,8 @@ class _FileWatcher:
         except ImportError:
             logger.warning("watchdog not installed — file watch disabled (pip install watchdog)")
             return
-        self._observer = Observer(daemon=True)
+        self._observer = Observer()
+        self._observer.daemon = True
         self._observer.start()
         logger.info("watchdog observer started")
 
@@ -310,7 +311,7 @@ async def watch_files(
     observer to the new workdir.
     """
     wd_str = workdir or settings.workdir
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     q = _watcher.start(wd_str, loop)
 
     import json
