@@ -25,13 +25,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/files", tags=["files"])
 
 
-def _workdir() -> Path:
-    return Path(settings.workdir).resolve()
+def _workdir(workdir: str | None = None) -> Path:
+    """Resolve the workdir to use. If ``workdir`` is given (per-session),
+    use it; otherwise fall back to the global setting."""
+    base = workdir or settings.workdir
+    return Path(base).resolve()
 
 
-def _safe_resolve(path: str) -> Path:
+def _safe_resolve(path: str, workdir: str | None = None) -> Path:
     """Resolve a path relative to workdir, preventing traversal outside."""
-    wd = _workdir()
+    wd = _workdir(workdir)
     target = (wd / path).resolve()
     try:
         target.relative_to(wd)
@@ -59,7 +62,7 @@ def _skip(name: str) -> bool:
     return name.startswith(".") or name in _HIDE
 
 
-def _build_node(path: Path, relative: str) -> FileNode:
+def _build_node(path: Path, relative: str, workdir: str | None = None) -> FileNode:
     """Build a single FileNode with no children (children are lazy-loaded)."""
     is_dir = path.is_dir()
     has_children = False
@@ -78,7 +81,7 @@ def _build_node(path: Path, relative: str) -> FileNode:
     )
 
 
-def _list_children(path: Path, relative: str) -> list[FileNode]:
+def _list_children(path: Path, relative: str, workdir: str | None = None) -> list[FileNode]:
     """Immediate children of a directory, sorted (dirs first, then by name)."""
     out: list[FileNode] = []
     try:
@@ -86,39 +89,46 @@ def _list_children(path: Path, relative: str) -> list[FileNode]:
             if _skip(child.name):
                 continue
             child_rel = f"{relative}/{child.name}" if relative else child.name
-            out.append(_build_node(child, child_rel))
+            out.append(_build_node(child, child_rel, workdir))
     except (PermissionError, OSError):
         pass
     return out
 
 
 @router.get("/tree")
-async def get_tree() -> FileNode:
+async def get_tree(workdir: str | None = Query(None)) -> FileNode:
     """Workdir root with first-level children (depth=1).
 
-    Subdirectories are collapsed; their children are lazy-loaded via
+    Pass ``?workdir=`` to target a specific session's workdir (per-session
+    sandbox). Subdirectories are collapsed; their children are lazy-loaded via
     ``GET /files/children``.
     """
-    wd = _workdir()
-    root = _build_node(wd, "")
-    root.children = _list_children(wd, "")
+    wd = _workdir(workdir)
+    root = _build_node(wd, "", workdir)
+    root.children = _list_children(wd, "", workdir)
     return root
 
 
 @router.get("/children")
-async def get_children(path: str = Query("")) -> dict:
+async def get_children(
+    path: str = Query(""),
+    workdir: str | None = Query(None),
+) -> dict:
     """Immediate children of a directory (for lazy tree expansion)."""
-    target = _safe_resolve(path) if path else _workdir()
+    target = _safe_resolve(path, workdir) if path else _workdir(workdir)
     if not target.is_dir():
         raise HTTPException(status_code=400, detail="not a directory")
-    children = _list_children(target, path)
+    children = _list_children(target, path, workdir)
     return {"path": path, "children": [c.model_dump() for c in children]}
 
 
 @router.get("/read")
-async def read_file(path: str = Query(...)) -> dict:
+async def read_file(
+    path: str = Query(...),
+    workdir: str | None = Query(None),
+) -> dict:
     """Read a file from the workdir."""
-    target = _safe_resolve(path)
+    target = _safe_resolve(path, workdir)
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="file not found")
     try:
@@ -142,12 +152,13 @@ async def read_file(path: str = Query(...)) -> dict:
 class WriteFileBody(BaseModel):
     path: str
     content: str
+    workdir: str | None = None
 
 
 @router.put("/write")
 async def write_file(body: WriteFileBody) -> dict:
     """Write/save a file in the workdir."""
-    target = _safe_resolve(body.path)
+    target = _safe_resolve(body.path, body.workdir)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(body.content, encoding="utf-8")
     return {"ok": True, "path": body.path}

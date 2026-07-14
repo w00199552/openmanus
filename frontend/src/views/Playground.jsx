@@ -39,7 +39,8 @@ export const Playground = observer(function Playground() {
 
   const loadTree = useCallback(async () => {
     try {
-      const res = await fetch(`${BACKEND}/files/tree`);
+      const wdParam = runtime.workdir ? `?workdir=${encodeURIComponent(runtime.workdir)}` : "";
+      const res = await fetch(`${BACKEND}/files/tree${wdParam}`);
       if (!res.ok) return;
       const data = await res.json();
       setTree(data);
@@ -49,14 +50,15 @@ export const Playground = observer(function Playground() {
       setLoadingByDir(new Set());
     } catch { /* ignore */ }
     setLoading(false);
-  }, []);
+  }, [runtime.workdir]);
 
   const loadChildren = useCallback(async (dirPath) => {
     // already loaded
     if (childrenByDir[dirPath]) return;
     setLoadingByDir((prev) => new Set(prev).add(dirPath));
     try {
-      const res = await fetch(`${BACKEND}/files/children?path=${encodeURIComponent(dirPath)}`);
+      const wdParam = runtime.workdir ? `&workdir=${encodeURIComponent(runtime.workdir)}` : "";
+      const res = await fetch(`${BACKEND}/files/children?path=${encodeURIComponent(dirPath)}${wdParam}`);
       if (!res.ok) return;
       const data = await res.json();
       setChildrenByDir((prev) => ({...prev, [dirPath]: data.children}));
@@ -68,18 +70,19 @@ export const Playground = observer(function Playground() {
         return next;
       });
     }
-  }, [childrenByDir]);
+  }, [childrenByDir, runtime.workdir]);
 
   const loadFile = useCallback(async (path) => {
     try {
-      const res = await fetch(`${BACKEND}/files/read?path=${encodeURIComponent(path)}`);
+      const wdParam = runtime.workdir ? `&workdir=${encodeURIComponent(runtime.workdir)}` : "";
+      const res = await fetch(`${BACKEND}/files/read?path=${encodeURIComponent(path)}${wdParam}`);
       if (!res.ok) return;
       const data = await res.json();
       setFile(data);
       setDraft(data.content);
       setDirty(false);
     } catch { /* ignore */ }
-  }, []);
+  }, [runtime.workdir]);
 
   const saveFile = useCallback(async () => {
     if (!file || !dirty) return;
@@ -88,12 +91,12 @@ export const Playground = observer(function Playground() {
       await fetch(`${BACKEND}/files/write`, {
         method: "PUT",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({path: file.path, content: draft}),
+        body: JSON.stringify({path: file.path, content: draft, workdir: runtime.workdir || undefined}),
       });
       setDirty(false);
     } catch { /* ignore */ }
     setSaving(false);
-  }, [file, draft, dirty]);
+  }, [file, draft, dirty, runtime.workdir]);
 
   // initial load
   useEffect(() => {
