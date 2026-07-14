@@ -2,7 +2,7 @@ import {useState, useEffect, useCallback, useRef} from "react";
 import {observer} from "mobx-react-lite";
 import {
   ChevronRight, ChevronDown, FileText, FileCode, File, Folder, FolderOpen,
-  Save, RefreshCw, Loader2, FolderTree,
+  Save, RefreshCw, Loader2, FolderTree, FilePlus, FolderPlus, Trash2,
 } from "lucide-react";
 import MDEditor from "@uiw/react-md-editor";
 import {Highlight, themes} from "prism-react-renderer";
@@ -10,6 +10,10 @@ import {Group, Panel, Separator} from "react-resizable-panels";
 
 import {useStore} from "@/hooks/useStore";
 import {cn} from "@/lib/utils";
+import {
+  ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
+} from "@/components/ui/context-menu";
+import {ConfirmDialog} from "@/components/sandbox/ConfirmDialog";
 
 /**
  * Playground — file tree + content editor for the Sandbox.
@@ -35,6 +39,10 @@ export const Playground = observer(function Playground() {
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Context menu + modal state
+  // modal: {mode: 'delete'|'newFile'|'newDir', node} | null
+  const [modal, setModal] = useState(null);
 
   // Refs for SSE callback (avoids re-subscribing watchdog when file/dirty change)
   const fileRef = useRef(file);
@@ -140,6 +148,38 @@ export const Playground = observer(function Playground() {
     loadFile(path);
   };
 
+  // ── Context menu actions ────────────────────────────────────────────────
+
+  const handleDelete = async (node) => {
+    try {
+      await sandbox.deletePath(node.path);
+      // if we deleted the currently open file, clear it
+      if (file && file.path === node.path) setFile(null);
+      // watchdog will auto-refresh the tree
+    } catch { /* error shown by dialog */ }
+    setModal(null);
+  };
+
+  const handleNewFile = async (node, name) => {
+    const parentPath = node.type === "dir" ? node.path : "";
+    const fullPath = parentPath ? `${parentPath}/${name}` : name;
+    try {
+      await sandbox.createFile(fullPath);
+      // watchdog will auto-refresh the tree
+    } catch { /* error shown by dialog */ }
+    setModal(null);
+  };
+
+  const handleNewDir = async (node, name) => {
+    const parentPath = node.type === "dir" ? node.path : "";
+    const fullPath = parentPath ? `${parentPath}/${name}` : name;
+    try {
+      await sandbox.createDir(fullPath);
+      // watchdog will auto-refresh the tree
+    } catch { /* error shown by dialog */ }
+    setModal(null);
+  };
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -189,7 +229,7 @@ export const Playground = observer(function Playground() {
             )}
             <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
               {tree && (
-                <TreeNode node={tree} expanded={expanded} toggleDir={toggleDir} onSelect={onSelectFile} selectedPath={file?.path} depth={0} childrenByDir={childrenByDir} loadingByDir={loadingByDir}/>
+                <TreeNode node={tree} expanded={expanded} toggleDir={toggleDir} onSelect={onSelectFile} selectedPath={file?.path} depth={0} childrenByDir={childrenByDir} loadingByDir={loadingByDir} onContext={setModal}/>
               )}
             </div>
           </div>
@@ -212,13 +252,39 @@ export const Playground = observer(function Playground() {
           </div>
         </Panel>
       </Group>
+
+      {/* Context menu modal (delete confirm / new file/dir input) */}
+      {modal && (
+        <ConfirmDialog
+          open
+          mode={modal.mode}
+          title={
+            modal.mode === "delete" ? `Delete "${modal.node.name}"?`
+            : modal.mode === "newFile" ? "New File"
+            : "New Folder"
+          }
+          message={
+            modal.mode === "delete"
+              ? modal.node.type === "dir"
+                ? `This will recursively delete the folder and all its contents.`
+                : `This action cannot be undone.`
+              : undefined
+          }
+          onCancel={() => setModal(null)}
+          onConfirm={
+            modal.mode === "delete" ? () => handleDelete(modal.node)
+            : modal.mode === "newFile" ? (name) => handleNewFile(modal.node, name)
+            : (name) => handleNewDir(modal.node, name)
+          }
+        />
+      )}
     </div>
   );
 });
 
 // ─── Tree node (recursive, lazy) ─────────────────────────────────────────────
 
-function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth, childrenByDir, loadingByDir}) {
+function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth, childrenByDir, loadingByDir, onContext}) {
   const isDir = node.type === "dir";
   const isOpen = expanded.has(node.path);
   const isLoading = loadingByDir.has(node.path);
@@ -227,51 +293,86 @@ function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth, chi
     ? (node.children || [])
     : (isDir ? (childrenByDir[node.path] || null) : null);
 
-  // root: render children only
+  // shared props for recursive children
+  const childProps = {expanded, toggleDir, onSelect, selectedPath, childrenByDir, loadingByDir, onContext};
+
+  // root: render children only (with its own context menu for the workdir)
   if (depth === 0 && isDir) {
     return (
-      <div>
-        {(node.children || []).map((child) => (
-          <TreeNode key={child.path || child.name} node={child} expanded={expanded} toggleDir={toggleDir} onSelect={onSelect} selectedPath={selectedPath} depth={1} childrenByDir={childrenByDir} loadingByDir={loadingByDir}/>
-        ))}
-      </div>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div className="min-h-full">
+            {(node.children || []).map((child) => (
+              <TreeNode key={child.path || child.name} node={child} {...childProps} depth={1}/>
+            ))}
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onClick={() => onContext({mode: "newFile", node})}>
+            <FilePlus className="size-3.5"/> New File
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => onContext({mode: "newDir", node})}>
+            <FolderPlus className="size-3.5"/> New Folder
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     );
   }
 
   return (
     <div>
-      <button
-        onClick={() => isDir ? toggleDir(node.path) : onSelect(node.path)}
-        className={cn(
-          "flex w-full items-center gap-1 rounded-md px-2 py-1 text-[13px] transition",
-          !isDir && selectedPath === node.path
-            ? "bg-accent/10 text-accent"
-            : "text-muted-foreground/90 hover:bg-sidebar/40 hover:text-foreground",
-        )}
-        style={{paddingLeft: `${depth * 12 + 4}px`}}
-      >
-        {isDir ? (
-          <>
-            {isLoading ? (
-              <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground/50"/>
-            ) : (
-              isOpen ? <ChevronDown className="size-3.5 shrink-0"/> : <ChevronRight className="size-3.5 shrink-0"/>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <button
+            onClick={() => isDir ? toggleDir(node.path) : onSelect(node.path)}
+            className={cn(
+              "flex w-full items-center gap-1 rounded-md px-2 py-1 text-[13px] transition",
+              !isDir && selectedPath === node.path
+                ? "bg-accent/10 text-accent"
+                : "text-muted-foreground/90 hover:bg-sidebar/40 hover:text-foreground",
             )}
-            {isOpen ? <FolderOpen className="size-3.5 shrink-0 text-sky-400/70"/> : <Folder className="size-3.5 shrink-0 text-sky-400/70"/>}
-          </>
-        ) : (
-          <>
-            <span className="w-3 shrink-0"/>
-            <FileIcon name={node.name}/>
-          </>
-        )}
-        <span className="truncate">{node.name}</span>
-      </button>
+            style={{paddingLeft: `${depth * 12 + 4}px`}}
+          >
+            {isDir ? (
+              <>
+                {isLoading ? (
+                  <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground/50"/>
+                ) : (
+                  isOpen ? <ChevronDown className="size-3.5 shrink-0"/> : <ChevronRight className="size-3.5 shrink-0"/>
+                )}
+                {isOpen ? <FolderOpen className="size-3.5 shrink-0 text-sky-400/70"/> : <Folder className="size-3.5 shrink-0 text-sky-400/70"/>}
+              </>
+            ) : (
+              <>
+                <span className="w-3 shrink-0"/>
+                <FileIcon name={node.name}/>
+              </>
+            )}
+            <span className="truncate">{node.name}</span>
+          </button>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          {isDir && (
+            <>
+              <ContextMenuItem onClick={() => onContext({mode: "newFile", node})}>
+                <FilePlus className="size-3.5"/> New File
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => onContext({mode: "newDir", node})}>
+                <FolderPlus className="size-3.5"/> New Folder
+              </ContextMenuItem>
+              <ContextMenuSeparator/>
+            </>
+          )}
+          <ContextMenuItem className="text-destructive focus:text-destructive" onClick={() => onContext({mode: "delete", node})}>
+            <Trash2 className="size-3.5"/> Delete
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
       {isDir && isOpen && (
         isLoading
           ? null
           : (children || []).map((child) => (
-            <TreeNode key={child.path || child.name} node={child} expanded={expanded} toggleDir={toggleDir} onSelect={onSelect} selectedPath={selectedPath} depth={depth + 1} childrenByDir={childrenByDir} loadingByDir={loadingByDir}/>
+            <TreeNode key={child.path || child.name} node={child} {...childProps} depth={depth + 1}/>
           ))
       )}
     </div>

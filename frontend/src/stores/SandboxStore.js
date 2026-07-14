@@ -124,6 +124,48 @@ export class SandboxStore {
     return res.json();
   }
 
+  /** DELETE /files/delete — delete a file or directory. */
+  async deletePath(path) {
+    const res = await fetch(`${BACKEND}/files/delete`, {
+      method: "DELETE",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({path, workdir: this.workdir || undefined}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `delete failed: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  /** POST /files/mkdir — create a directory. */
+  async createDir(path) {
+    const res = await fetch(`${BACKEND}/files/mkdir`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({path, workdir: this.workdir || undefined}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `mkdir failed: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  /** POST /files/create — create an empty file. */
+  async createFile(path) {
+    const res = await fetch(`${BACKEND}/files/create`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({path, workdir: this.workdir || undefined}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `create failed: ${res.status}`);
+    }
+    return res.json();
+  }
+
   /** Build the watchdog SSE URL for the current workdir. */
   get watchUrl() {
     const wdParam = this.workdir ? `?workdir=${encodeURIComponent(this.workdir)}` : "";

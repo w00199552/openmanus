@@ -164,6 +164,45 @@ async def write_file(body: WriteFileBody) -> dict:
     return {"ok": True, "path": body.path}
 
 
+class PathBody(BaseModel):
+    path: str
+    workdir: str | None = None
+
+
+@router.delete("/delete")
+async def delete_path(body: PathBody) -> dict:
+    """Delete a file or directory (recursive for dirs)."""
+    import shutil
+
+    target = _safe_resolve(body.path, body.workdir)
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="path does not exist")
+    if target.is_dir():
+        shutil.rmtree(target)
+    else:
+        target.unlink()
+    return {"ok": True, "path": body.path}
+
+
+@router.post("/mkdir")
+async def make_dir(body: PathBody) -> dict:
+    """Create a directory (and parents if needed)."""
+    target = _safe_resolve(body.path, body.workdir)
+    target.mkdir(parents=True, exist_ok=True)
+    return {"ok": True, "path": body.path}
+
+
+@router.post("/create")
+async def create_file(body: PathBody) -> dict:
+    """Create an empty file."""
+    target = _safe_resolve(body.path, body.workdir)
+    if target.exists():
+        raise HTTPException(status_code=409, detail="file already exists")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("", encoding="utf-8")
+    return {"ok": True, "path": body.path}
+
+
 # ── Watchdog: file change events via SSE ────────────────────────────────────
 
 import threading
