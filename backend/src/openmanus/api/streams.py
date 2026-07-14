@@ -166,11 +166,11 @@ async def post_message(
 
     # ── normal message: run agent ────────────────────────────────────────
     workdir = s.get("workdir") or settings.workdir
-    agent = await _resolve_agent(request, s)
-    # rebuild agent with session's workdir (in case it was changed by /cd earlier)
-    if s.get("workdir"):
-        from ..agent_factory import build_agent
-        agent = await build_agent(s.get("name") or "Manus", workdir)
+    # Use cached entry agent (rebuilds only when workdir changes).
+    # TeamLeader sessions also use build_entry_agent with their own workdir.
+    from ..agent_factory import build_entry_agent
+    agent = await build_entry_agent(workdir)
+    request.app.state.agent = agent
 
     speaker = s.get("name") or ("TeamLeader" if s.get("kind") == "team" else "Manus")
 
