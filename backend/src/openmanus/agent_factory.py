@@ -78,7 +78,18 @@ def _build_model() -> BaseChatModel:
 
 
 def _build_backend(workdir: str) -> LocalShellBackend:
-    return LocalShellBackend(root_dir=workdir, virtual_mode=False, inherit_env=True)
+    """Build the shell+filesystem backend for an agent's workdir.
+
+    virtual_mode=True confines file operations (read/write/ls/glob/grep) to
+    root_dir — agents see only their workdir, not the host filesystem.
+    Shell commands (execute) still run on the host with cwd=root_dir, but
+    that's constrained by the agent's prompt, not the backend.
+
+    NOTE: virtual_mode does NOT sandbox shell execution. For true isolation,
+    use a sandboxed backend (Docker/VM). This is sufficient for a local dev
+    tool where you trust the agent.
+    """
+    return LocalShellBackend(root_dir=workdir, virtual_mode=True, inherit_env=True)
 
 
 def _resolve_session_id(config: Any) -> str:
