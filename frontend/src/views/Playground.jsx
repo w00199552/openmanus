@@ -208,14 +208,14 @@ function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth}) {
           "flex w-full items-center gap-1 rounded-md px-2 py-1 text-[12px] transition",
           !isDir && selectedPath === node.path
             ? "bg-accent/10 text-accent"
-            : "text-muted-foreground hover:bg-sidebar/40 hover:text-foreground",
+            : "text-muted-foreground/90 hover:bg-sidebar/40 hover:text-foreground",
         )}
         style={{paddingLeft: `${depth * 12 + 4}px`}}
       >
         {isDir ? (
           <>
             {isOpen ? <ChevronDown className="size-3 shrink-0"/> : <ChevronRight className="size-3 shrink-0"/>}
-            {isOpen ? <FolderOpen className="size-3 shrink-0 text-muted-foreground/60"/> : <Folder className="size-3 shrink-0 text-muted-foreground/60"/>}
+            {isOpen ? <FolderOpen className="size-3 shrink-0 text-sky-400/70"/> : <Folder className="size-3 shrink-0 text-sky-400/70"/>}
           </>
         ) : (
           <>
