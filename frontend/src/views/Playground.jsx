@@ -2,7 +2,7 @@ import {useState, useEffect, useCallback} from "react";
 import {observer} from "mobx-react-lite";
 import {
   ChevronRight, ChevronDown, FileText, FileCode, File, Folder, FolderOpen,
-  Save, RefreshCw, Loader2,
+  Save, RefreshCw, Loader2, FolderTree,
 } from "lucide-react";
 import MDEditor from "@uiw/react-md-editor";
 import {Highlight, themes} from "prism-react-renderer";
@@ -161,6 +161,13 @@ export const Playground = observer(function Playground() {
         <button onClick={loadTree} className="rounded-md p-1 text-muted-foreground transition hover:bg-card hover:text-foreground" title="Refresh">
           <RefreshCw className="size-3.5"/>
         </button>
+        {/* current workdir */}
+        {runtime.workdir && (
+          <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground/50" title={runtime.workdir}>
+            <FolderTree className="size-3 shrink-0"/>
+            <span className="truncate">{runtime.workdir}</span>
+          </span>
+        )}
         <div className="flex-1"/>
         {file && (
           <>
