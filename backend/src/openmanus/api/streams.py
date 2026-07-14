@@ -48,17 +48,6 @@ class PostMessage(BaseModel):
     content: str
 
 
-async def _resolve_agent(request: Request, session: dict[str, Any]) -> Any:
-    """Pick the agent for this session.
-
-    The entry agent (manus) is the cached app default. Dispatched agents are
-    built fresh by the dispatch tool (not via this path — they run inside the
-    dispatch tool's engine.start call). So for user-initiated messages we
-    always use the entry agent.
-    """
-    return request.app.state.agent
-
-
 class CdBody(BaseModel):
     path: str = ""
 
@@ -165,18 +154,12 @@ async def post_message(
         body.content = f"The user activated the skill '{skill_name}'. Follow its instructions for this and subsequent messages until told otherwise.\n\n--- Skill: {skill_name} ---\n{skill_md}\n--- End Skill ---\n\n{user_text}"
 
     # ── normal message: run agent ────────────────────────────────────────
-    workdir = s.get("workdir") or settings.workdir
-    # Use cached entry agent (rebuilds only when workdir changes).
-    # TeamLeader sessions also use build_entry_agent with their own workdir.
-    from ..agent_factory import build_entry_agent
-    agent = await build_entry_agent(workdir)
-    request.app.state.agent = agent
-
+    # The agent is built fresh inside _stream from the session's DB record.
     speaker = s.get("name") or ("TeamLeader" if s.get("kind") == "team" else "Manus")
 
     asyncio.create_task(
         engine._stream(
-            agent=agent, session_id=session_id, prompt=body.content, speaker=speaker,
+            session_id=session_id, prompt=body.content, speaker=speaker,
         )
     )
     return {"ok": True, "session_id": session_id}

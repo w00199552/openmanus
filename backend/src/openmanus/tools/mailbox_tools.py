@@ -72,7 +72,6 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         if not agent_loader.get(target_agent):
             return f"Unknown agent '{target_agent}'. Available: {', '.join(agent_loader.all_names())}."
         from ..engine import engine  # lazy: avoid import cycle
-        from ..agent_factory import build_agent
 
         caller_session_id = _config_session_id(config)
         caller_row = await session_store.get(caller_session_id)
@@ -96,9 +95,8 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
             )
             team_id = team["id"]
             await session_store.update(team_id, status="running")
-            team_agent = await build_agent(target_agent, caller_workdir)
             await engine.run(
-                agent=team_agent, session_id=team_id, prompt=task,
+                session_id=team_id, prompt=task,
                 speaker=target_agent, mode="async",
             )
             await mailbox_store.send(
@@ -133,9 +131,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         )
         child_id = child["id"]
 
-        sub_agent = await build_agent(target_agent, caller_workdir)
         await engine.start(
-            agent=sub_agent,
             caller_session_id=caller_session_id,
             target_agent=target_agent,
             task=task,

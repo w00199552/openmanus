@@ -101,10 +101,14 @@ async def get_session(session_id: str, request: Request) -> dict:
 
     messages: list[dict] = []
     try:
-        agent = request.app.state.agent
-        snapshot = await agent.aget_state(
-            {"configurable": {"thread_id": session_id}}
-        )
+        from ..agent_factory import build_agent, close_agent
+        agent = await build_agent(session_id)
+        try:
+            snapshot = await agent.aget_state(
+                {"configurable": {"thread_id": session_id}}
+            )
+        finally:
+            await close_agent(agent)
         raw = (getattr(snapshot, "values", {}) or {}).get("messages", [])
 
         # tool_call_id -> (msg_index, part_index) so a ToolMessage can back-fill.
@@ -245,10 +249,14 @@ async def reset_session(session_id: str, request: Request) -> dict:
     if not await session_store.get(session_id):
         raise HTTPException(status_code=404, detail="session not found")
     try:
-        agent = request.app.state.agent
-        checkpointer = getattr(agent, "checkpointer", None)
-        if checkpointer is not None and hasattr(checkpointer, "adelete_thread"):
-            await checkpointer.adelete_thread(session_id)
+        from ..agent_factory import build_agent, close_agent
+        agent = await build_agent(session_id)
+        try:
+            checkpointer = getattr(agent, "checkpointer", None)
+            if checkpointer is not None and hasattr(checkpointer, "adelete_thread"):
+                await checkpointer.adelete_thread(session_id)
+        finally:
+            await close_agent(agent)
     except Exception:
         pass
     return {"reset": session_id}

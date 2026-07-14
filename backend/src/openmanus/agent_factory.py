@@ -22,6 +22,7 @@ from typing import Any
 from .agent_loader import agent_loader
 from .chat_model import ChatGLM
 from .config import settings
+from .db import session_store
 from .middleware.agent_trace import AgentTraceMiddleware
 from .middleware.tool_guard import ToolGuardMiddleware
 from .store import get_checkpointer
@@ -42,11 +43,6 @@ _FILE_TOOLS = frozenset(
      "list_directory", "ls", "glob", "grep", "task"}
 )
 
-# Per-workdir cache for the ENTRY agent only (cheap reuse — it's stateless
-# across turns thanks to the checkpointer). Dispatched agents are built fresh
-# every time and NOT cached.
-_entry_agent_cache: dict[str, CompiledStateGraph] = {}
-_default_checkpointer: Any = None
 _default_model: BaseChatModel | None = None
 
 
@@ -136,28 +132,29 @@ def _build_tools(tool_names: list[str], workdir: str, agent_name: str = "") -> l
     return tools
 
 
-# The entry agent name (hardcoded — the user-facing entry point).
-ENTRY_AGENT = "Manus"
+async def build_agent(session_id: str) -> CompiledStateGraph:
+    """Create a FRESH, independent agent for a session.
 
+    Reads the session's name + workdir from the DB, then builds a new
+    CompiledStateGraph with its OWN checkpointer (own aiosqlite connection,
+    same DB file, isolated by thread_id=session_id).
 
-async def build_agent(name: str, workdir: str) -> CompiledStateGraph:
-    """Create a FRESH, independent agent by name.
-
-    Each call returns a new CompiledStateGraph with its OWN checkpointer
-    instance — never reused, never shared. Sharing a checkpointer across
-    concurrent astreams was the cross-talk root cause: langgraph's
-    AsyncSqliteSaver is not safe for concurrent use on the same object, so a
-    dispatched agent's chunks bled into the dispatcher's stream. A fresh
-    checkpointer per agent (all pointing at the same DB file, isolated by
-    thread_id) eliminates that.
+    Agent instances are NOT cached — every call creates a new one. The
+    checkpointer persists conversation history in the DB, so rebuilding
+    an agent does NOT lose context. Callers should close the agent after
+    use (see ``close_agent``).
     """
     global _default_model
     if _default_model is None:
         _default_model = _build_model()
 
+    s = await session_store.get(session_id)
+    if not s:
+        raise ValueError(f"session not found: {session_id}")
+    name = s["name"]
+    workdir = s.get("workdir") or settings.workdir
+
     # Each agent gets its OWN checkpointer instance (own aiosqlite connection).
-    # They all read/write the same DB file, isolated by thread_id. This is the
-    # concurrency fix: no shared checkpointer object → no cross-talk.
     own_checkpointer = await get_checkpointer()
 
     cfg = agent_loader.get(name)
@@ -202,20 +199,16 @@ async def build_agent(name: str, workdir: str) -> CompiledStateGraph:
     )
 
 
-async def build_entry_agent(workdir: str = None) -> CompiledStateGraph:
-    """Build (and cache) the entry agent for a workdir.
+async def close_agent(agent: CompiledStateGraph) -> None:
+    """Close an agent's checkpointer connection to release resources.
 
-    The entry agent (manus) is the one the user talks to directly. Cached
-    per-workdir since it's stateless across turns (its own checkpointer holds
-    history). Dispatched agents are NOT cached — built fresh each time with
-    their own checkpointer.
+    Safe to call multiple times — checks for the connection before closing.
     """
-    wd = workdir or settings.workdir
-    if wd not in _entry_agent_cache:
-        global _default_model
-        if _default_model is None:
-            _default_model = _build_model()
-        _entry_agent_cache[wd] = await build_agent(ENTRY_AGENT, wd)
-    return _entry_agent_cache[wd]
-
-# Entry agent name is hardcoded — use ENTRY_AGENT constant.
+    cp = getattr(agent, "checkpointer", None)
+    if cp is not None:
+        conn = getattr(cp, "conn", None)
+        if conn is not None:
+            try:
+                await conn.close()
+            except Exception:  # noqa: BLE001
+                pass

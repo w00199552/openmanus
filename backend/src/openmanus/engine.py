@@ -221,7 +221,6 @@ class StreamEngine:
     async def run(
         self,
         *,
-        agent: Any,
         session_id: str,
         prompt: str,
         speaker: str,
@@ -229,13 +228,15 @@ class StreamEngine:
     ) -> str | None:
         """Run an agent the user is directly talking to.
 
+        The agent is built fresh from the session's DB record inside _stream.
+
         ``mode="async"`` schedules a background task and returns immediately.
         ``mode="sync"`` awaits completion and returns the final text.
         """
         if mode == "async":
             task = asyncio.create_task(
                 self._stream(
-                    agent=agent, session_id=session_id, prompt=prompt,
+                    session_id=session_id, prompt=prompt,
                     speaker=speaker,
                 )
             )
@@ -243,14 +244,13 @@ class StreamEngine:
             task.add_done_callback(self._tasks.discard)
             return None
         return await self._stream(
-            agent=agent, session_id=session_id, prompt=prompt,
+            session_id=session_id, prompt=prompt,
             speaker=speaker,
         )
 
     async def start(
         self,
         *,
-        agent: Any,
         caller_session_id: str,
         target_agent: str,
         task: str,
@@ -275,23 +275,26 @@ class StreamEngine:
 
         prompt = f"{role_prompt(target_agent)}\n\nTask:\n{task}"
 
-        # DEFER until the caller's own stream finishes. This is the cross-talk
-        # fix: two astreams must NEVER run concurrently on the same event loop
-        # (langgraph's async generators share state and contaminate each other).
+        # DEFER until the caller's own stream finishes. We store only the
+        # session_id — the agent is built fresh when _stream actually runs.
         self._pending.setdefault(caller_session_id, []).append({
-            "agent": agent, "target_session_id": target_session_id,
+            "target_session_id": target_session_id,
             "prompt": prompt, "speaker": target_agent,
             "scope_id": scope_id, "caller_session_id": caller_session_id,
         })
         return target_session_id
 
     async def _stream(
-        self, *, agent: Any, session_id: str, prompt: str, speaker: str,
+        self, *, session_id: str, prompt: str, speaker: str,
     ) -> str:
+        from .agent_factory import build_agent, close_agent
+
+        agent = await build_agent(session_id)
         queue = channels.get_queue(session_id)
         st = _StreamState()
         config = {"configurable": {"thread_id": session_id}}
         await session_store.update(session_id, status="running", touch=True)
+        final = "(no output)"
         try:
             async for chunk in agent.astream(
                 {"messages": [HumanMessage(content=prompt)]},
@@ -306,6 +309,8 @@ class StreamEngine:
                 await queue.put(f)
             await session_store.update(session_id, status="active", touch=True)
             await queue.put(E.frame(E.ev_done(session_id=session_id)))
+            # Extract final text BEFORE closing the agent (avoids rebuild).
+            final = await _final_text(agent, config)
         except Exception as exc:  # noqa: BLE001
             logger.exception("engine failed for session %s", session_id)
             for f in _close_open(st, session_id=session_id, speaker=speaker):
@@ -314,13 +319,14 @@ class StreamEngine:
             await session_store.update(session_id, status="error", touch=True)
             await queue.put(E.frame(E.ev_done(session_id=session_id)))
         finally:
+            await close_agent(agent)
             await queue.put(E.done_sentinel(session_id))
             channels.mark_finished(session_id)
             # Launch any dispatched agents that were deferred during this stream.
             pending = self._pending.pop(session_id, [])
             for p in pending:
                 task = asyncio.create_task(self._start_and_record(
-                    agent=p["agent"], target_session_id=p["target_session_id"],
+                    target_session_id=p["target_session_id"],
                     prompt=p["prompt"], speaker=p["speaker"],
                     scope_id=p["scope_id"], caller_session_id=p["caller_session_id"],
                 ))
@@ -332,21 +338,18 @@ class StreamEngine:
             row = await session_store.get(session_id)
             if row and row.get("status") != "running":
                 await self._start_turn_with_inbox(session_id, row)
-        return await _final_text(agent, config)
+        return final
 
     async def _start_and_record(
-        self, *, agent, target_session_id, prompt, speaker, scope_id, caller_session_id,
+        self, *, target_session_id, prompt, speaker, scope_id, caller_session_id,
     ):
         answer = await self._stream(
-            agent=agent, session_id=target_session_id, prompt=prompt, speaker=speaker,
+            session_id=target_session_id, prompt=prompt, speaker=speaker,
         )
         await self._record_result(
             scope_id=scope_id, target_session_id=target_session_id,
             caller_session_id=caller_session_id, target_agent=speaker, answer=answer or "",
         )
-        # No explicit reactivation here — mailbox.send (inside _record_result)
-        # triggers the wake-up handler, which starts the caller's next turn if
-        # it's idle.
 
     async def _record_result(
         self, *, scope_id, target_session_id, caller_session_id, target_agent, answer,
@@ -376,10 +379,6 @@ class StreamEngine:
         row = await session_store.get(to_session_id)
         if not row:
             return
-        status = row.get("status")
-        if status == "running":
-            return  # agent is busy; message will queue
-            return
         if row.get("status") == "running":
             return  # agent is busy; message will queue
         await self._start_turn_with_inbox(to_session_id, row)
@@ -401,16 +400,11 @@ class StreamEngine:
                 lines.append(f"[{m['kind']}] from {sender}: {m.get('content','')}")
         prompt = "You received these messages:\n" + "\n".join(lines) + "\n\nReview and continue your work, or write a final summary if everything is done."
         role = row.get("name") or "assistant"
-        workdir = row.get("workdir") or "."
         try:
-            from .agent_factory import build_agent
-            agent = await build_agent(role, workdir)
-            task = asyncio.create_task(self.run(
-                agent=agent, session_id=session_id, prompt=prompt,
+            await self.run(
+                session_id=session_id, prompt=prompt,
                 speaker=role, mode="async",
-            ))
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
+            )
         except Exception:  # noqa: BLE001
             logger.exception("wake-up turn failed for %s", session_id)
 

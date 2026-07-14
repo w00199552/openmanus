@@ -33,7 +33,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .agent_factory import build_entry_agent
 from .agent_loader import agent_loader
 from .api import agents, files, sessions, skills, streams, tools
 from .api.sessions import workdir_router
@@ -74,8 +73,6 @@ async def lifespan(app: FastAPI):
     # Restore workdir from last session (so Sandbox shows the right dir on startup)
     if manus_session and manus_session.get("workdir"):
         settings.workdir = manus_session["workdir"]
-    # Build the entry agent (manus) eagerly so the first request is fast.
-    app.state.agent = await build_entry_agent()
     logger.info(
         "openmanus ready | model=%s base=%s workdir=%s db=%s",
         settings.model, settings.openai_base_url, settings.workdir, settings.database_url,
