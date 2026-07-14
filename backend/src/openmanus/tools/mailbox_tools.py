@@ -17,7 +17,6 @@ import logging
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langchain_core.tools.base import InjectedToolArg
-from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Annotated, Any
 
@@ -117,14 +116,14 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         else:
             scope_id = caller_scope
 
-        child_workdir = str(Path(caller_workdir) / "agents" / target_agent)
-        Path(child_workdir).mkdir(parents=True, exist_ok=True)
-
+        # Specialists write directly into the caller's workdir — no per-agent
+        # subdirectory. This matches the TeamLeader branch and keeps all
+        # artifacts in one place unless the task itself requests otherwise.
         child = await session_store.create(
             kind="subagent",
             name=target_agent,
             title=task[:60] or f"{target_agent} task",
-            workdir=child_workdir,
+            workdir=caller_workdir,
             scope_id=scope_id,
             metadata={
                 "role": target_agent,
@@ -134,7 +133,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         )
         child_id = child["id"]
 
-        sub_agent = await build_agent(target_agent, child_workdir)  # noqa: same var, different context
+        sub_agent = await build_agent(target_agent, caller_workdir)
         await engine.start(
             agent=sub_agent,
             caller_session_id=caller_session_id,
