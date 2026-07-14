@@ -11,20 +11,19 @@ import {Group, Panel, Separator} from "react-resizable-panels";
 import {useStore} from "@/hooks/useStore";
 import {cn} from "@/lib/utils";
 
-const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
-
 /**
- * Playground — file tree + content editor for the workdir.
+ * Playground — file tree + content editor for the Sandbox.
  *
- * Tree: depth=1 on load (collapsed dirs); children are lazy-loaded on
- * first expand via GET /files/children.
+ * All data operations are delegated to SandboxStore (workdir, cd, file CRUD).
+ * This component is a thin render layer: it calls store methods and manages
+ * only UI state (expanded dirs, open file, draft, dirty).
  *
+ * Tree: depth=1 on load (collapsed dirs); children are lazy-loaded on expand.
  * Right: file content (markdown editor / code viewer / text).
- * Live refresh: watches /files/watch SSE for external changes.
- * Save: PUT /files/write.
+ * Live refresh: watchdog SSE via sandbox.watchUrl.
  */
 export const Playground = observer(function Playground() {
-  const {runtime} = useStore();
+  const {sandbox} = useStore();
   const [tree, setTree] = useState(null);
   const [expanded, setExpanded] = useState(new Set());
   // childrenByDir[path] = FileNode[] (lazy-loaded)
@@ -45,29 +44,21 @@ export const Playground = observer(function Playground() {
 
   const loadTree = useCallback(async () => {
     try {
-      const wdParam = runtime.workdir ? `?workdir=${encodeURIComponent(runtime.workdir)}` : "";
-      const res = await fetch(`${BACKEND}/files/tree${wdParam}`);
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await sandbox.loadTree();
       setTree(data);
-      // collapse all dirs by default
       setExpanded(new Set());
       setChildrenByDir({});
       setLoadingByDir(new Set());
     } catch { /* ignore */ }
     setLoading(false);
-  }, [runtime.workdir]);
+  }, [sandbox]);
 
   const loadChildren = useCallback(async (dirPath) => {
-    // already loaded
     if (childrenByDir[dirPath]) return;
     setLoadingByDir((prev) => new Set(prev).add(dirPath));
     try {
-      const wdParam = runtime.workdir ? `&workdir=${encodeURIComponent(runtime.workdir)}` : "";
-      const res = await fetch(`${BACKEND}/files/children?path=${encodeURIComponent(dirPath)}${wdParam}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setChildrenByDir((prev) => ({...prev, [dirPath]: data.children}));
+      const children = await sandbox.loadChildren(dirPath);
+      setChildrenByDir((prev) => ({...prev, [dirPath]: children}));
     } catch { /* ignore */ }
     finally {
       setLoadingByDir((prev) => {
@@ -76,61 +67,51 @@ export const Playground = observer(function Playground() {
         return next;
       });
     }
-  }, [childrenByDir, runtime.workdir]);
+  }, [childrenByDir, sandbox]);
 
   const loadFile = useCallback(async (path) => {
     try {
-      const wdParam = runtime.workdir ? `&workdir=${encodeURIComponent(runtime.workdir)}` : "";
-      const res = await fetch(`${BACKEND}/files/read?path=${encodeURIComponent(path)}${wdParam}`);
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await sandbox.loadFile(path);
       setFile(data);
       setDraft(data.content);
       setDirty(false);
     } catch { /* ignore */ }
-  }, [runtime.workdir]);
+  }, [sandbox]);
 
   const saveFile = useCallback(async () => {
     if (!file || !dirty) return;
     setSaving(true);
     try {
-      await fetch(`${BACKEND}/files/write`, {
-        method: "PUT",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({path: file.path, content: draft, workdir: runtime.workdir || undefined}),
-      });
+      await sandbox.saveFile(file.path, draft);
       setDirty(false);
     } catch { /* ignore */ }
     setSaving(false);
-  }, [file, draft, dirty, runtime.workdir]);
+  }, [file, draft, dirty, sandbox]);
 
   // initial load
   useEffect(() => {
     loadTree();
   }, [loadTree]);
 
-  // watch runtime.workdir for cd changes (mobx observer auto-triggers)
+  // reload tree when workdir changes (cd or session switch)
   useEffect(() => {
-    if (runtime.workdir) {
+    if (sandbox.workdir) {
       loadTree();
       setFile(null);
     }
-  }, [runtime.workdir, loadTree]);
+  }, [sandbox.workdir, loadTree]);
 
   // watchdog: live refresh — reconnect ONLY when workdir changes (per-session)
   // file/dirty are accessed via refs so we don't re-subscribe on every keystroke
   useEffect(() => {
-    const wdParam = runtime.workdir ? `?workdir=${encodeURIComponent(runtime.workdir)}` : "";
-    const es = new EventSource(`${BACKEND}/files/watch${wdParam}`);
+    const es = new EventSource(sandbox.watchUrl);
     es.onmessage = (ev) => {
       try {
         const evt = JSON.parse(ev.data);
         if (evt.type === "ping") return;
-        // refresh tree on any structural change
         if (evt.type === "created" || evt.type === "deleted" || evt.type === "moved") {
           loadTree();
         }
-        // refresh open file if it was modified externally
         if (evt.type === "modified") {
           const f = fileRef.current;
           if (f && evt.path === f.path && !dirtyRef.current) {
@@ -140,7 +121,7 @@ export const Playground = observer(function Playground() {
       } catch { /* ignore */ }
     };
     return () => es.close();
-  }, [runtime.workdir, loadTree, loadFile]);
+  }, [sandbox.workdir, sandbox, loadTree, loadFile]);
 
   const toggleDir = (path) => {
     const wasOpen = expanded.has(path);
@@ -200,10 +181,10 @@ export const Playground = observer(function Playground() {
         <Panel id="sandbox-tree" defaultSize="25%" minSize="12%" maxSize="50%">
           <div className="flex h-full flex-col bg-sidebar/20">
             {/* current workdir header */}
-            {runtime.workdir && (
-              <div className="flex shrink-0 items-center gap-1.5 border-b border-border/40 px-3 py-1.5" title={runtime.workdir}>
+            {sandbox.workdir && (
+              <div className="flex shrink-0 items-center gap-1.5 border-b border-border/40 px-3 py-1.5" title={sandbox.workdir}>
                 <FolderTree className="size-3.5 shrink-0 text-sky-400/70"/>
-                <span className="truncate text-[11px] font-medium text-foreground/80">{runtime.workdir}</span>
+                <span className="truncate text-[11px] font-medium text-foreground/80">{sandbox.workdir}</span>
               </div>
             )}
             <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">

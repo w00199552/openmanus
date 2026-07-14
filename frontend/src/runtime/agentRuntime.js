@@ -37,6 +37,8 @@ export class AgentRuntime {
   // ─── injected collaborators ──────────────────────────────────────────────
   /** @type {null | { sessions: any[], bumpActivity: Function, markRunning: Function, markStatus: Function }} */
   _sessionStore = null;
+  /** @type {null | SandboxStore} injected post-construction for cd delegation */
+  _sandboxStore = null;
 
   // ─── internal handles (NOT observable — prefixed _) ─────────────────────
   _subHandle = null;                 // current SSE subscription handle
@@ -54,8 +56,6 @@ export class AgentRuntime {
   activeScopeId = null;
   /** session_id → bool: a run is currently streaming for that session. */
   runningBySession = {};
-  /** current workdir (changes via cd command, Playground watches this). */
-  workdir = "";
   /** last error message, if any. */
   error = null;
 
@@ -67,6 +67,11 @@ export class AgentRuntime {
   /** Inject the SessionStore (for list unread/preview/status sync). Optional. */
   setSessionStore(s) {
     this._sessionStore = s;
+  }
+
+  /** Inject the SandboxStore (for cd command delegation + workdir sync). Optional. */
+  setSandboxStore(sb) {
+    this._sandboxStore = sb;
   }
 
   // ─── observable views (computed) ─────────────────────────────────────────
@@ -98,13 +103,8 @@ export class AgentRuntime {
   setActive(sessionId, scopeId = null) {
     this.activeSessionId = sessionId;
     this.activeScopeId = scopeId;
-    // Update workdir to match the selected session (so Sandbox follows)
-    if (this._sessionStore) {
-      const sess = this._sessionStore.sessions.find((s) => s.id === sessionId);
-      if (sess && sess.workdir) {
-        this.workdir = sess.workdir;
-      }
-    }
+    // Sync sandbox workdir to match the selected session
+    this._sandboxStore?.syncFromSession(sessionId);
     // Rebuild the live subscription for the new view (async history load first).
     this._resubscribe();
   }
@@ -116,12 +116,12 @@ export class AgentRuntime {
   async send(sessionId, text) {
     if (!text || !text.trim()) return;
 
-    // ── cd command: dedicated API, doesn't trigger agent ──────────────
+    // ── cd command: delegate to SandboxStore (doesn't trigger agent) ───
     const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
     if (lower === "cd" || lower.startsWith("cd ")) {
       const path = trimmed.slice(2).trim(); // everything after "cd"
-      await this._cd(sessionId, path, text);
+      await this._handleCd(sessionId, path, text);
       return;
     }
 
@@ -192,8 +192,11 @@ export class AgentRuntime {
     }
   }
 
-  /** cd command: switch workdir via dedicated API (doesn't trigger agent). */
-  async _cd(sessionId, path, originalText) {
+  /**
+   * Handle a cd command: show user bubble, delegate API call to SandboxStore,
+   * then display the system reply. All workdir state is owned by SandboxStore.
+   */
+  async _handleCd(sessionId, path, originalText) {
     // optimistic user bubble
     this.messageStore.appendMessage(sessionId, {
       id: `u-${Date.now()}`,
@@ -205,41 +208,18 @@ export class AgentRuntime {
     });
 
     try {
-      const res = await fetch(`${BACKEND}/sessions/${encodeURIComponent(sessionId)}/cd`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({path}),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || `cd failed: ${res.status}`);
-      }
-      const body = await res.json();
-
-      // insert system response message
-      const msgId = `cd-${Date.now()}`;
+      const body = await this._sandboxStore.cd(sessionId, path);
       const reply = body.action === "pwd"
         ? `📁 Current workdir: ${body.workdir}`
         : `📁 Workdir switched to: ${body.workdir}`;
       this.messageStore.appendMessage(sessionId, {
-        id: msgId,
+        id: `cd-${Date.now()}`,
         role: "assistant",
         speaker: "system",
         content: [{ type: "text", text: reply }],
         status: "complete",
         createdAt: Date.now(),
       });
-
-      // update workdir observable + session list (so setActive reads it later)
-      if (body.workdir && body.action === "cd") {
-        runInAction(() => {
-          this.workdir = body.workdir;
-          if (this._sessionStore) {
-            const sess = this._sessionStore.sessions.find((s) => s.id === sessionId);
-            if (sess) sess.workdir = body.workdir;
-          }
-        });
-      }
     } catch (e) {
       this.messageStore.appendMessage(sessionId, {
         id: `cd-err-${Date.now()}`,
