@@ -70,7 +70,10 @@ async def lifespan(app: FastAPI):
 
     await init_db()
     # Seed the singleton Manus entry session (idempotent; migrates legacy "default").
-    await session_store.ensure_manus()
+    manus_session = await session_store.ensure_manus()
+    # Restore workdir from last session (so Sandbox shows the right dir on startup)
+    if manus_session and manus_session.get("workdir"):
+        settings.workdir = manus_session["workdir"]
     # Build the entry agent (manus) eagerly so the first request is fast.
     app.state.agent = await build_entry_agent()
     logger.info(
