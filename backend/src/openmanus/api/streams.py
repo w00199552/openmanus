@@ -104,13 +104,12 @@ async def cd_session(session_id: str, body: CdBody) -> dict:
             detail=f"path does not exist or not a directory: {path}",
         )
 
-    # update session + global workdir
+    # update session + global workdir.
+    # NOTE: we don't rebuild the agent here — post_message reads the session's
+    # workdir and rebuilds on the next message. This just updates the stored
+    # value so the next message picks it up.
     await session_store.update(session_id, workdir=str(target))
     settings.workdir = str(target)
-
-    # rebuild agent with new workdir
-    from ..agent_factory import build_agent
-    await build_agent(s.get("name") or "Manus", str(target))
 
     return {"ok": True, "workdir": str(target), "action": "cd"}
 
