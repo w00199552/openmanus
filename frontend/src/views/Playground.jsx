@@ -110,7 +110,9 @@ export const Playground = observer(function Playground() {
   }, [sandbox.workdir, loadTree]);
 
   // watchdog: live refresh — reconnect ONLY when workdir changes (per-session)
-  // file/dirty are accessed via refs so we don't re-subscribe on every keystroke
+  // Debounced: batch rapid events (e.g. create emits created+modified) into a
+  // single tree reload to avoid re-rendering dozens of ContextMenu components.
+  const wdTimer = useRef(null);
   useEffect(() => {
     const es = new EventSource(sandbox.watchUrl);
     es.onmessage = (ev) => {
@@ -118,7 +120,9 @@ export const Playground = observer(function Playground() {
         const evt = JSON.parse(ev.data);
         if (evt.type === "ping") return;
         if (evt.type === "created" || evt.type === "deleted" || evt.type === "moved") {
-          loadTree();
+          // debounce tree reloads — collapse rapid bursts into one
+          clearTimeout(wdTimer.current);
+          wdTimer.current = setTimeout(() => loadTree(), 300);
         }
         if (evt.type === "modified") {
           const f = fileRef.current;
@@ -128,7 +132,7 @@ export const Playground = observer(function Playground() {
         }
       } catch { /* ignore */ }
     };
-    return () => es.close();
+    return () => { es.close(); clearTimeout(wdTimer.current); };
   }, [sandbox.workdir, sandbox, loadTree, loadFile]);
 
   const toggleDir = (path) => {
@@ -229,7 +233,16 @@ export const Playground = observer(function Playground() {
             )}
             <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
               {tree && (
-                <TreeNode node={tree} expanded={expanded} toggleDir={toggleDir} onSelect={onSelectFile} selectedPath={file?.path} depth={0} childrenByDir={childrenByDir} loadingByDir={loadingByDir} onContext={setModal}/>
+                <TreeContainer
+                  node={tree}
+                  expanded={expanded}
+                  toggleDir={toggleDir}
+                  onSelect={onSelectFile}
+                  selectedPath={file?.path}
+                  childrenByDir={childrenByDir}
+                  loadingByDir={loadingByDir}
+                  onContext={setModal}
+                />
               )}
             </div>
           </div>
@@ -282,92 +295,121 @@ export const Playground = observer(function Playground() {
   );
 });
 
+// ─── Tree container (single shared ContextMenu) ──────────────────────────────
+
+/**
+ * TreeContainer wraps the entire tree in ONE Radix ContextMenu.
+ * A native `onContextMenu` on the wrapper captures which node was right-clicked
+ * (via data attributes), then the shared ContextMenu opens with items
+ * tailored to that node type.
+ */
+function TreeContainer({node, expanded, toggleDir, onSelect, selectedPath, childrenByDir, loadingByDir, onContext}) {
+  const ctxNodeRef = useRef(null);
+  const [ctxNode, setCtxNode] = useState(null);
+
+  const childProps = {expanded, toggleDir, onSelect, selectedPath, childrenByDir, loadingByDir};
+
+  return (
+    <ContextMenu
+      onOpenChange={(open) => {
+        if (!open) setCtxNode(null);
+      }}
+    >
+      <ContextMenuTrigger
+        asChild
+        onContextMenu={(e) => {
+          // Walk up from the click target to find the nearest node wrapper
+          const wrapper = e.target.closest("[data-path]");
+          if (wrapper) {
+            const path = wrapper.getAttribute("data-path");
+            const type = wrapper.getAttribute("data-type");
+            const name = wrapper.getAttribute("data-name");
+            ctxNodeRef.current = {path, type, name};
+          } else {
+            ctxNodeRef.current = null;
+          }
+          // set ctxNode AFTER Radix opens the menu (next tick)
+          setTimeout(() => setCtxNode(ctxNodeRef.current), 0);
+        }}
+      >
+        <div className="min-h-full">
+          {(node.children || []).map((child) => (
+            <TreeNode key={child.path || child.name} node={child} {...childProps} depth={1}/>
+          ))}
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        {ctxNode?.type === "dir" && (
+          <>
+            <ContextMenuItem onClick={() => onContext({mode: "newFile", node: ctxNode})}>
+              <FilePlus className="size-3.5"/> New File
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => onContext({mode: "newDir", node: ctxNode})}>
+              <FolderPlus className="size-3.5"/> New Folder
+            </ContextMenuItem>
+            <ContextMenuSeparator/>
+          </>
+        )}
+        {!ctxNode && (
+          <>
+            <ContextMenuItem onClick={() => onContext({mode: "newFile", node: {type: "dir", path: "", name: ""}})}>
+              <FilePlus className="size-3.5"/> New File
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => onContext({mode: "newDir", node: {type: "dir", path: "", name: ""}})}>
+              <FolderPlus className="size-3.5"/> New Folder
+            </ContextMenuItem>
+            <ContextMenuSeparator/>
+          </>
+        )}
+        {ctxNode && (
+          <ContextMenuItem className="text-destructive focus:text-destructive" onClick={() => onContext({mode: "delete", node: ctxNode})}>
+            <Trash2 className="size-3.5"/> Delete
+          </ContextMenuItem>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
 // ─── Tree node (recursive, lazy) ─────────────────────────────────────────────
 
-function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth, childrenByDir, loadingByDir, onContext}) {
+function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth, childrenByDir, loadingByDir}) {
   const isDir = node.type === "dir";
   const isOpen = expanded.has(node.path);
   const isLoading = loadingByDir.has(node.path);
-  // lazy-loaded children for this dir (if expanded); root uses built-in children
-  const children = depth === 0
-    ? (node.children || [])
-    : (isDir ? (childrenByDir[node.path] || null) : null);
+  const children = isDir ? (childrenByDir[node.path] || null) : null;
 
-  // shared props for recursive children
-  const childProps = {expanded, toggleDir, onSelect, selectedPath, childrenByDir, loadingByDir, onContext};
-
-  // root: render children only (with its own context menu for the workdir)
-  if (depth === 0 && isDir) {
-    return (
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <div className="min-h-full">
-            {(node.children || []).map((child) => (
-              <TreeNode key={child.path || child.name} node={child} {...childProps} depth={1}/>
-            ))}
-          </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem onClick={() => onContext({mode: "newFile", node})}>
-            <FilePlus className="size-3.5"/> New File
-          </ContextMenuItem>
-          <ContextMenuItem onClick={() => onContext({mode: "newDir", node})}>
-            <FolderPlus className="size-3.5"/> New Folder
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
-    );
-  }
+  const childProps = {expanded, toggleDir, onSelect, selectedPath, childrenByDir, loadingByDir};
 
   return (
-    <div>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <button
-            onClick={() => isDir ? toggleDir(node.path) : onSelect(node.path)}
-            className={cn(
-              "flex w-full items-center gap-1 rounded-md px-2 py-1 text-[13px] transition",
-              !isDir && selectedPath === node.path
-                ? "bg-accent/10 text-accent"
-                : "text-muted-foreground/90 hover:bg-sidebar/40 hover:text-foreground",
-            )}
-            style={{paddingLeft: `${depth * 12 + 4}px`}}
-          >
-            {isDir ? (
-              <>
-                {isLoading ? (
-                  <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground/50"/>
-                ) : (
-                  isOpen ? <ChevronDown className="size-3.5 shrink-0"/> : <ChevronRight className="size-3.5 shrink-0"/>
-                )}
-                {isOpen ? <FolderOpen className="size-3.5 shrink-0 text-sky-400/70"/> : <Folder className="size-3.5 shrink-0 text-sky-400/70"/>}
-              </>
+    <div data-path={node.path} data-type={node.type} data-name={node.name}>
+      <button
+        onClick={() => isDir ? toggleDir(node.path) : onSelect(node.path)}
+        className={cn(
+          "flex w-full items-center gap-1 rounded-md px-2 py-1 text-[13px] transition",
+          !isDir && selectedPath === node.path
+            ? "bg-accent/10 text-accent"
+            : "text-muted-foreground/90 hover:bg-sidebar/40 hover:text-foreground",
+        )}
+        style={{paddingLeft: `${depth * 12 + 4}px`}}
+      >
+        {isDir ? (
+          <>
+            {isLoading ? (
+              <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground/50"/>
             ) : (
-              <>
-                <span className="w-3 shrink-0"/>
-                <FileIcon name={node.name}/>
-              </>
+              isOpen ? <ChevronDown className="size-3.5 shrink-0"/> : <ChevronRight className="size-3.5 shrink-0"/>
             )}
-            <span className="truncate">{node.name}</span>
-          </button>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          {isDir && (
-            <>
-              <ContextMenuItem onClick={() => onContext({mode: "newFile", node})}>
-                <FilePlus className="size-3.5"/> New File
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => onContext({mode: "newDir", node})}>
-                <FolderPlus className="size-3.5"/> New Folder
-              </ContextMenuItem>
-              <ContextMenuSeparator/>
-            </>
-          )}
-          <ContextMenuItem className="text-destructive focus:text-destructive" onClick={() => onContext({mode: "delete", node})}>
-            <Trash2 className="size-3.5"/> Delete
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+            {isOpen ? <FolderOpen className="size-3.5 shrink-0 text-sky-400/70"/> : <Folder className="size-3.5 shrink-0 text-sky-400/70"/>}
+          </>
+        ) : (
+          <>
+            <span className="w-3 shrink-0"/>
+            <FileIcon name={node.name}/>
+          </>
+        )}
+        <span className="truncate">{node.name}</span>
+      </button>
       {isDir && isOpen && (
         isLoading
           ? null
