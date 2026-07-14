@@ -1,4 +1,5 @@
 import {useState, useEffect, useCallback, useRef} from "react";
+import {createPortal} from "react-dom";
 import {observer} from "mobx-react-lite";
 import {
   ChevronRight, ChevronDown, FileText, FileCode, File, Folder, FolderOpen,
@@ -10,9 +11,6 @@ import {Group, Panel, Separator} from "react-resizable-panels";
 
 import {useStore} from "@/hooks/useStore";
 import {cn} from "@/lib/utils";
-import {
-  ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
-} from "@/components/ui/context-menu";
 import {ConfirmDialog} from "@/components/sandbox/ConfirmDialog";
 
 /**
@@ -341,80 +339,105 @@ export const Playground = observer(function Playground() {
   );
 });
 
-// ─── Tree container (single shared ContextMenu) ──────────────────────────────
+// ─── Tree container (native onContextMenu + positioned menu) ─────────────────
 
 /**
- * TreeContainer wraps the entire tree in ONE Radix ContextMenu.
- * A native `onContextMenu` on the wrapper captures which node was right-clicked
- * (via data attributes), then the shared ContextMenu opens with items
- * tailored to that node type.
+ * TreeContainer uses a NATIVE onContextMenu on the wrapper div to capture
+ * which node was right-clicked, then renders a lightweight positioned menu.
+ * This avoids Radix ContextMenuTrigger's per-child event listener binding
+ * which caused UI freezes when the tree re-renders (dozens of nodes).
  */
 function TreeContainer({node, expanded, toggleDir, onSelect, selectedPath, childrenByDir, loadingByDir, onContext}) {
-  const ctxNodeRef = useRef(null);
-  const [ctxNode, setCtxNode] = useState(null);
+  const [menu, setMenu] = useState(null); // {x, y, node} | null
 
   const childProps = {expanded, toggleDir, onSelect, selectedPath, childrenByDir, loadingByDir};
 
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    const wrapper = e.target.closest("[data-path]");
+    const targetNode = wrapper
+      ? {
+          path: wrapper.getAttribute("data-path"),
+          type: wrapper.getAttribute("data-type"),
+          name: wrapper.getAttribute("data-name"),
+        }
+      : null;
+    setMenu({x: e.clientX, y: e.clientY, node: targetNode});
+  };
+
+  // close on any click outside, ESC, or scroll
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close, true);
+    const esc = (e) => { if (e.key === "Escape") close(); };
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close, true);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [menu]);
+
+  const isDir = menu?.node?.type === "dir";
+
   return (
-    <ContextMenu
-      onOpenChange={(open) => {
-        if (!open) setCtxNode(null);
-      }}
-    >
-      <ContextMenuTrigger
-        asChild
-        onContextMenu={(e) => {
-          // Walk up from the click target to find the nearest node wrapper
-          const wrapper = e.target.closest("[data-path]");
-          if (wrapper) {
-            const path = wrapper.getAttribute("data-path");
-            const type = wrapper.getAttribute("data-type");
-            const name = wrapper.getAttribute("data-name");
-            ctxNodeRef.current = {path, type, name};
-          } else {
-            ctxNodeRef.current = null;
-          }
-          // set ctxNode AFTER Radix opens the menu (next tick)
-          setTimeout(() => setCtxNode(ctxNodeRef.current), 0);
-        }}
-      >
-        <div className="min-h-full">
-          {(node.children || []).map((child) => (
-            <TreeNode key={child.path || child.name} node={child} {...childProps} depth={1}/>
-          ))}
-        </div>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        {ctxNode?.type === "dir" && (
-          <>
-            <ContextMenuItem onClick={() => onContext({mode: "newFile", node: ctxNode})}>
-              <FilePlus className="size-3.5"/> New File
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => onContext({mode: "newDir", node: ctxNode})}>
-              <FolderPlus className="size-3.5"/> New Folder
-            </ContextMenuItem>
-            <ContextMenuSeparator/>
-          </>
-        )}
-        {!ctxNode && (
-          <>
-            <ContextMenuItem onClick={() => onContext({mode: "newFile", node: {type: "dir", path: "", name: ""}})}>
-              <FilePlus className="size-3.5"/> New File
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => onContext({mode: "newDir", node: {type: "dir", path: "", name: ""}})}>
-              <FolderPlus className="size-3.5"/> New Folder
-            </ContextMenuItem>
-            <ContextMenuSeparator/>
-          </>
-        )}
-        {ctxNode && (
-          <ContextMenuItem className="text-destructive focus:text-destructive" onClick={() => onContext({mode: "delete", node: ctxNode})}>
-            <Trash2 className="size-3.5"/> Delete
-          </ContextMenuItem>
-        )}
-      </ContextMenuContent>
-    </ContextMenu>
+    <>
+      <div className="min-h-full" onContextMenu={handleContextMenu}>
+        {(node.children || []).map((child) => (
+          <TreeNode key={child.path || child.name} node={child} {...childProps} depth={1}/>
+        ))}
+      </div>
+      {menu && createPortal(
+        <div
+          className="fixed z-[100] min-w-[160px] overflow-hidden rounded-md border border-border/80 bg-popover p-1 py-1.5 text-popover-foreground shadow-xl anim-rise"
+          style={{left: menu.x, top: menu.y}}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {isDir && (
+            <>
+              <MenuItem icon={FilePlus} label="New File" onClick={() => { onContext({mode: "newFile", node: menu.node}); setMenu(null); }}/>
+              <MenuItem icon={FolderPlus} label="New Folder" onClick={() => { onContext({mode: "newDir", node: menu.node}); setMenu(null); }}/>
+              <MenuDivider/>
+            </>
+          )}
+          {!menu.node && (
+            <>
+              <MenuItem icon={FilePlus} label="New File" onClick={() => { onContext({mode: "newFile", node: {type: "dir", path: "", name: ""}}); setMenu(null); }}/>
+              <MenuItem icon={FolderPlus} label="New Folder" onClick={() => { onContext({mode: "newDir", node: {type: "dir", path: "", name: ""}}); setMenu(null); }}/>
+              <MenuDivider/>
+            </>
+          )}
+          {menu.node && (
+            <MenuItem icon={Trash2} label="Delete" danger onClick={() => { onContext({mode: "delete", node: menu.node}); setMenu(null); }}/>
+          )}
+        </div>,
+        document.body,
+      )}
+    </>
   );
+}
+
+function MenuItem({icon: Icon, label, onClick, danger}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-[13px] outline-none transition",
+        danger
+          ? "text-destructive hover:bg-destructive/10"
+          : "text-popover-foreground hover:bg-accent/15 hover:text-accent",
+      )}
+    >
+      <Icon className="size-3.5"/>
+      {label}
+    </button>
+  );
+}
+
+function MenuDivider() {
+  return <div className="my-1 h-px bg-border/60"/>;
 }
 
 // ─── Tree node (recursive, lazy) ─────────────────────────────────────────────
