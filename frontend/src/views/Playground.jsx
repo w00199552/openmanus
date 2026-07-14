@@ -1,4 +1,5 @@
 import {useState, useEffect, useCallback} from "react";
+import {observer} from "mobx-react-lite";
 import {
   ChevronRight, ChevronDown, FileText, FileCode, File, Folder, FolderOpen,
   Save, RefreshCw, Loader2,
@@ -7,6 +8,7 @@ import MDEditor from "@uiw/react-md-editor";
 import {Highlight, themes} from "prism-react-renderer";
 import {Group, Panel, Separator} from "react-resizable-panels";
 
+import {useStore} from "@/hooks/useStore";
 import {cn} from "@/lib/utils";
 
 const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
@@ -19,7 +21,8 @@ const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
  * Live refresh: watches /files/watch SSE for external changes.
  * Save: PUT /files/write.
  */
-export function Playground() {
+export const Playground = observer(function Playground() {
+  const {runtime} = useStore();
   const [tree, setTree] = useState(null);
   const [expanded, setExpanded] = useState(new Set());
   const [file, setFile] = useState(null);
@@ -72,12 +75,13 @@ export function Playground() {
     loadTree();
   }, [loadTree]);
 
-  // listen for /cd workdir changes
+  // watch runtime.workdir for cd changes (mobx observer auto-triggers)
   useEffect(() => {
-    const handler = () => { loadTree(); setFile(null); };
-    window.addEventListener("openmanus:workdir-changed", handler);
-    return () => window.removeEventListener("openmanus:workdir-changed", handler);
-  }, [loadTree]);
+    if (runtime.workdir) {
+      loadTree();
+      setFile(null);
+    }
+  }, [runtime.workdir, loadTree]);
 
   // watchdog: live refresh
   useEffect(() => {
@@ -178,7 +182,7 @@ export function Playground() {
       </Group>
     </div>
   );
-}
+});
 
 // ─── Tree node (recursive) ──────────────────────────────────────────────────
 

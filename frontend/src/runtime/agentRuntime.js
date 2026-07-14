@@ -54,6 +54,8 @@ export class AgentRuntime {
   activeScopeId = null;
   /** session_id → bool: a run is currently streaming for that session. */
   runningBySession = {};
+  /** current workdir (changes via cd command, Playground watches this). */
+  workdir = "";
   /** last error message, if any. */
   error = null;
 
@@ -221,9 +223,9 @@ export class AgentRuntime {
         createdAt: Date.now(),
       });
 
-      // notify Playground to refresh tree
+      // update workdir observable (Playground watches this via mobx)
       if (body.workdir) {
-        window.dispatchEvent(new CustomEvent("openmanus:workdir-changed", {detail: body.workdir}));
+        runInAction(() => { this.workdir = body.workdir; });
       }
     } catch (e) {
       this.messageStore.appendMessage(sessionId, {
