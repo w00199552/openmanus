@@ -30,7 +30,7 @@
 
 ### 一句话架构
 
-> `FastAPI 应用 → AG-UI SSE 端点 → AGUIBridge 把 LangGraph 流转成 AG-UI 事件 → 驱动 deepagents 智能体图（默认路由 agent + teamleader 协调 agent + 子 agent 分发机制）→ 操作 LocalShellBackend（真实文件系统）+ SQLite checkpointer 持久化历史`
+> `FastAPI 应用 → AG-UI SSE 端点 → AGUIBridge 把 LangGraph 流转成 AG-UI 事件 → 驱动 deepagents 智能体图（默认路由 agent + TeamLeader 协调 agent + 子 agent 分发机制）→ 操作 LocalShellBackend（真实文件系统）+ SQLite checkpointer 持久化历史`
 
 ### 通信方式
 
@@ -38,11 +38,11 @@
 
 ### 三层 Agent 架构
 
-| 层级 | Agent | 职责 | 权限 |
-| --- | --- | --- | --- |
-| ① 入口层 | **默认路由 agent** | 纯路由 + 只读查询；写/执行工具被硬剥除 | 只读（`ls` / `read_file` / `grep` / `glob`） |
-| ② 单专家层 | **`dispatch_single`**（异步后台） | 委派给 `researcher` / `coder` 子 agent | 按角色 allow-list |
-| ③ 团队层 | **`dispatch_to_team`**（teamleader 协调） | teamleader 内部用同步 `dispatch_task` 调度 `researcher` / `coder` | teamleader 保留文件工具 |
+| 层级 | Agent | 职责                                                         | 权限                                       |
+| --- | --- |------------------------------------------------------------|------------------------------------------|
+| ① 入口层 | **默认路由 agent** | 纯路由 + 只读查询；写/执行工具被硬剥除                                      | 只读（`ls` / `read_file` / `grep` / `glob`） |
+| ② 单专家层 | **`dispatch_single`**（异步后台） | 委派给 `Researcher` / `Coder` 子 agent                         | 按角色 allow-list                           |
+| ③ 团队层 | **`dispatch_to_team`**（TeamLeader 协调） | TeamLeader 内部用同步 `dispatch_task` 调度 `Researcher` / `Coder` | TeamLeader 保留文件工具                        |
 
 ### 核心价值
 
@@ -114,10 +114,10 @@ D:/deepagents-opencode/
     │       ├── config.py              # ★ 配置（pydantic-settings Settings 单例）
     │       ├── store.py               # ★ LangGraph checkpointer 工厂（SQLite/Postgres）
     │       ├── db.py                  # ★ SessionStore（会话元数据 + 协作图，原生 SQL）
-    │       ├── agent_factory.py       # ★ 构建默认 agent + teamleader agent（per-workdir 缓存）
+    │       ├── agent_factory.py       # ★ 构建默认 agent + TeamLeader agent（per-workdir 缓存）
     │       ├── agui_bridge.py         # ★ AGUIBridge：LangGraph 流 → AG-UI 事件（核心心脏）
     │       ├── single_runner.py       # ★ 单子-agent 后台运行器（SSE 队列）
-    │       ├── team_runner.py         # ★ teamleader 后台运行器（SSE 队列 + 群聊）
+    │       ├── team_runner.py         # ★ TeamLeader 后台运行器（SSE 队列 + 群聊）
     │       ├── api/                   # HTTP 路由层
     │       │   ├── __init__.py        # 导出 run / sessions / teams 三个 router
     │       │   ├── run.py             # ★ AG-UI run 端点 POST /agents/main(/) + /health
@@ -130,8 +130,8 @@ D:/deepagents-opencode/
     │           ├── __init__.py        # 导出三个 dispatch 工具工厂
     │           ├── dispatch_single.py # ★ dispatch_single：默认 agent → 单个专家（异步）
     │           ├── dispatch_to_team.py# ★ dispatch_to_team：默认 agent → 后台团队（异步）
-    │           ├── dispatch_task.py   # ★ dispatch_task：teamleader → 子 agent（同步）
-    │           └── roles.py           # ★ ROLES 字典：researcher / coder 角色与允许的工具
+    │           ├── dispatch_task.py   # ★ dispatch_task：TeamLeader → 子 agent（同步）
+    │           └── roles.py           # ★ ROLES 字典：Researcher / Coder 角色与允许的工具
     ├── agents/                        # （dispatch_task 创建的子 agent 工作目录，运行时生成）
     ├── workspace/, 01_code/           # 其他工作目录（运行时数据）
     └── dfs_algorithm.py, bfs_algorithm.py, Z  # 算法示例（DFS/BFS 实现，agent 运行产物，非核心代码）
@@ -176,7 +176,7 @@ D:/deepagents-opencode/
 **`lifespan(app)`**（async context manager，启动钩子）：
 1. `await init_db()` —— 建表；
 2. `await session_store.ensure_default()` —— 种子默认入口会话（id="default"，单例）；
-3. `app.state.agent, app.state.teamleader = await build_agents()` —— 预构建默认 agent + teamleader；
+3. `app.state.agent, app.state.TeamLeader = await build_agents()` —— 预构建默认 agent + TeamLeader；
 4. 日志输出 model / base_url / workdir / database_url。
 
 ---
@@ -261,14 +261,14 @@ D:/deepagents-opencode/
 | 常量 | 值 | 用途 |
 | --- | --- | --- |
 | `DEFAULT_EXCLUDED_TOOLS` | `frozenset({"write_file", "edit_file", "execute", "write_todos", "task"})` | 默认入口 agent 为纯路由 + 只读；`task`（deepagents 内建子 agent 分发）被剥除以防绕过自定义路由 |
-| `TEAMLEADER_EXCLUDED_TOOLS` | `frozenset({"task"})` | teamleader 保留文件工具（可检查文件），仅 `task` 被禁；其唯一委派路径是 `dispatch_task` |
+| `TEAMLEADER_EXCLUDED_TOOLS` | `frozenset({"task"})` | TeamLeader 保留文件工具（可检查文件），仅 `task` 被禁；其唯一委派路径是 `dispatch_task` |
 
 **系统 prompt**：
 
-| Prompt | 定位 |
-| --- | --- |
+| Prompt | 定位                                                                                         |
+| --- |--------------------------------------------------------------------------------------------|
 | `DEFAULT_PROMPT`（f-string，拼接在 `settings.system_prompt` 之后） | **智能路由器**，三条决策路径：① 闲聊 / 只读查询直接作答；② 单专家任务 → `dispatch_single`；③ 复杂多步任务 → `dispatch_to_team` |
-| `TEAMLEADER_PROMPT`（纯字面字符串） | **团队协调者**，用 `dispatch_task` 分发 researcher / coder 子 agent |
+| `TEAMLEADER_PROMPT`（纯字面字符串） | **团队协调者**，用 `dispatch_task` 分发 Researcher / Coder 子 agent                                 |
 
 **关键函数**：
 
@@ -276,11 +276,11 @@ D:/deepagents-opencode/
 | --- | --- |
 | `_build_model() -> BaseChatModel` | 按 `model_provider` 分支：`anthropic` → `ChatAnthropic(model, api_key, base_url, streaming=True, max_tokens=8192)`；其他 → `ChatOpenAI(model, api_key, base_url, streaming=True)`（**未设 max_tokens**） |
 | `_build_backend(workdir) -> LocalShellBackend` | `LocalShellBackend(root_dir=workdir, virtual_mode=False, inherit_env=True)` —— **真实文件系统操作** |
-| `_build_default_agent(workdir, checkpointer, model)` | per-workdir 构建函数：① 建 teamleader（挂 `dispatch_task` + `ToolGuardMiddleware(TEAMLEADER_EXCLUDED_TOOLS)`，name=`"openmanus-teamleader"`）；② 建默认 agent（挂 `dispatch_single` + `dispatch_to_team` + `ToolGuardMiddleware(DEFAULT_EXCLUDED_TOOLS)`，name=`"openmanus-default"`） |
-| `build_agents()` | 启动预热，返回 `(default_agent, teamleader)`，针对 `settings.workdir` 构建 |
+| `_build_default_agent(workdir, checkpointer, model)` | per-workdir 构建函数：① 建 TeamLeader（挂 `dispatch_task` + `ToolGuardMiddleware(TEAMLEADER_EXCLUDED_TOOLS)`，name=`"TeamLeader"`）；② 建默认 agent（挂 `dispatch_single` + `dispatch_to_team` + `ToolGuardMiddleware(DEFAULT_EXCLUDED_TOOLS)`，name=`"openmanus-default"`） |
+| `build_agents()` | 启动预热，返回 `(default_agent, TeamLeader)`，针对 `settings.workdir` 构建 |
 | `get_agent_for_workdir(workdir)` | 惰性构建并缓存（`_agent_cache: dict[str, tuple]`），首次调用时初始化 `_default_checkpointer` / `_default_model` |
 
-> **设计要点**：默认 agent 的子 agent 跑在 **teamleader 的图**（含完整工具）上，因为默认 agent 自身的写/执行工具被剥除。
+> **设计要点**：默认 agent 的子 agent 跑在 **TeamLeader 的图**（含完整工具）上，因为默认 agent 自身的写/执行工具被剥除。
 
 > ⚠️ **已知问题**：存在两个近似重复的构建函数（`_build_default_agent` 与 `build_agents`），`build_agents` 未复用前者（详见 §8）。
 
@@ -338,9 +338,9 @@ D:/deepagents-opencode/
 | `launch_single(*, agent, session_id, role, task_description, parent_session_id)` | `asyncio.create_task` 非阻塞启动 `_run_single_agent` |
 | `_run_single_agent` | 在子 agent 自己的 thread（= `session_id`）上运行；前置 `role_prompt(role) + "\n\nTask:\n{task_description}"`；经 `AGUIBridge._handle_chunk` 把帧推入队列；成功 → `status="done"`；异常 → `status="error"` + `add_link(direction="result")`；`finally` 推哨兵 |
 
-> 子 agent 跑在 **teamleader 的图**（含完整工具）上。
+> 子 agent 跑在 **TeamLeader 的图**（含完整工具）上。
 
-#### 4.6.2 `team_runner.py`（teamleader）
+#### 4.6.2 `team_runner.py`（TeamLeader）
 
 文件路径：`src/openmanus/team_runner.py`
 
@@ -387,10 +387,10 @@ D:/deepagents-opencode/
 
 `ROLES: dict[str, dict[str, Any]]`，两个角色：
 
-| 角色 | 定位 | `allowed_tools` |
-| --- | --- | --- |
-| `researcher` | 只读调研，不可编辑/执行，返回简明发现 | `{"read_file", "list_directory", "ls", "glob", "grep"}` |
-| `coder` | 实施变更，读/编辑/写/运行，返回简要总结 | `{"read_file", "write_file", "edit_file", "list_directory", "ls", "glob", "grep", "execute"}` |
+| 角色           | 定位 | `allowed_tools` |
+|--------------| --- | --- |
+| `Researcher` | 只读调研，不可编辑/执行，返回简明发现 | `{"read_file", "list_directory", "ls", "glob", "grep"}` |
+| `Coder`      | 实施变更，读/编辑/写/运行，返回简要总结 | `{"read_file", "write_file", "edit_file", "list_directory", "ls", "glob", "grep", "execute"}` |
 
 - `role_prompt(role)`：返回 `ROLES[role]["prompt"]`，缺失则回退 `f"You are a {role} sub-agent. ..."`。
 - ⚠️ `allowed_tools` 在 `dispatch_task` 的 `_filter_tools` 中**会被硬过滤**；`dispatch_single` 不做工具过滤（子 agent 跑在完整图的 thread 上）。
@@ -401,7 +401,7 @@ D:/deepagents-opencode/
 | --- | --- | --- | --- | --- |
 | `dispatch_single` | `make_dispatch_single_tool(*, agent_ref)` | `dispatch_single.py` | **异步（后台）** | `DispatchSingleInput{task_description, target_agent}` |
 | `dispatch_to_team` | `make_dispatch_to_team_tool(*, team_agent_ref)` | `dispatch_to_team.py` | **异步（后台）** | `DispatchToTeamInput{task_description}` |
-| `dispatch_task` | `make_dispatch_task_tool(*, agent_ref, parent_workdir)` | `dispatch_task.py` | **同步（阻塞 teamleader）** | `DispatchTaskInput{task_description, target_agent}` |
+| `dispatch_task` | `make_dispatch_task_tool(*, agent_ref, parent_workdir)` | `dispatch_task.py` | **同步（阻塞 TeamLeader）** | `DispatchTaskInput{task_description, target_agent}` |
 
 **`dispatch_single` 逻辑**：
 1. 校验 `target_agent in ROLES`；
@@ -412,12 +412,12 @@ D:/deepagents-opencode/
 6. 返回 *"Delegated to {role}, watch in Tasks"*。
 
 **`dispatch_to_team` 逻辑**：
-1. 建 `kind="team"` 会话（metadata 含 parent / `members=["teamleader","researcher","coder"]`）；
+1. 建 `kind="team"` 会话（metadata 含 parent / `members=["TeamLeader","Researcher","Coder"]`）；
 2. `launch_team(...)`（后台，非阻塞）；
 3. 记 `dispatch` link；
 4. 返回 *"Delegated to team {id}"*。
 
-**`dispatch_task` 逻辑**（teamleader 用，同步）：
+**`dispatch_task` 逻辑**（TeamLeader 用，同步）：
 1. 取 parent_session_id、tool_call_id；
 2. 校验 `target_agent in ROLES`；
 3. 建 child workdir：`{parent_workdir}/agents/{target_agent}`（`mkdir -p`）；
@@ -451,12 +451,12 @@ D:/deepagents-opencode/
                         │            │
                         ▼            ▼
         ┌───────────────────┐  ┌──────────────────────────┐
-        │ ② 单专家            │  │ ③ teamleader agent        │
-        │  researcher/coder  │  │  (openmanus-teamleader)    │
-        │  (teamleader 图上)  │  │  团队协调者                │
+        │ ② 单专家            │  │ ③ TeamLeader agent        │
+        │  Researcher/Coder  │  │  (openmanus-TeamLeader)    │
+        │  (TeamLeader 图上)  │  │  团队协调者                │
         └───────────────────┘  │  dispatch_task (同步)      │
-                               │       ├─ researcher 子agent│
-                               │       └─ coder 子agent     │
+                               │       ├─ Researcher 子agent│
+                               │       └─ Coder 子agent     │
                                └──────────────────────────┘
 ```
 
@@ -547,10 +547,10 @@ sequenceDiagram
 前端 → `POST /agents/main` → 默认 agent（`ToolGuardMiddleware` 剥除 write/edit/execute）→ 只读工具 → SSE 回前端。
 
 **路径 B — `dispatch_single`（单专家，异步后台）**：
-前端 → 默认 agent 决策 → 调 `dispatch_single` → 建 subagent 会话 → `launch_single`（`asyncio.create_task`，立即返回 "Delegated"）→ 子 agent 在 teamleader 图的 thread 上跑 → 事件推入 `single_registry` 队列 → 前端通过 `GET /sessions/{id}/stream` 实时消费 → `[DONE]` 收尾。
+前端 → 默认 agent 决策 → 调 `dispatch_single` → 建 subagent 会话 → `launch_single`（`asyncio.create_task`，立即返回 "Delegated"）→ 子 agent 在 TeamLeader 图的 thread 上跑 → 事件推入 `single_registry` 队列 → 前端通过 `GET /sessions/{id}/stream` 实时消费 → `[DONE]` 收尾。
 
-**路径 C — `dispatch_to_team`（团队，teamleader 协调）**：
-前端 → 默认 agent 决策 → 调 `dispatch_to_team` → 建 team 会话 → `launch_team`（非阻塞）→ teamleader 在自己 thread 上跑 → `dispatch_task`（同步）建 child 会话 → 子 agent ainvoke → 返回 answer → teamleader 复盘/再委派 → 最终群消息 → 事件推入 `team_registry` 队列 → 前端 `GET /teams/{id}/stream` 消费（标准 AG-UI 帧 + 自定义 `GROUP_MESSAGE`）→ `__team_done__` → `[DONE]`。
+**路径 C — `dispatch_to_team`（团队，TeamLeader 协调）**：
+前端 → 默认 agent 决策 → 调 `dispatch_to_team` → 建 team 会话 → `launch_team`（非阻塞）→ TeamLeader 在自己 thread 上跑 → `dispatch_task`（同步）建 child 会话 → 子 agent ainvoke → 返回 answer → teamleader 复盘/再委派 → 最终群消息 → 事件推入 `team_registry` 队列 → 前端 `GET /teams/{id}/stream` 消费（标准 AG-UI 帧 + 自定义 `GROUP_MESSAGE`）→ `__team_done__` → `[DONE]`。
 
 ### 5.5 AG-UI SSE 通信机制
 
@@ -581,7 +581,7 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | `id` | TEXT | PRIMARY KEY | 会话 id（如 `sess-{hex}`、固定 `default`、或前端传入） |
 | `kind` | TEXT | NOT NULL DEFAULT `'root'` | ∈ `{root, team, subagent}` |
-| `name` | TEXT | | 名称（如角色名 / "teamleader"） |
+| `name` | TEXT | | 名称（如角色名 / "TeamLeader"） |
 | `status` | TEXT | NOT NULL DEFAULT `'active'` | ∈ `{active, running, done, error}` |
 | `title` | TEXT | | 标题 |
 | `model` | TEXT | | 模型名 |
@@ -672,11 +672,11 @@ sequenceDiagram
 
 ### 7.4 `/teams` — 团队（`api/teams.py`）
 
-| 方法 | 路径 | 功能 |
-| --- | --- | --- |
-| `GET` | `/teams/{id}/stream` | **teamleader SSE 群聊流**（drain `team_registry.get_queue`，`__team_done__` → `[DONE]`），仅 `kind=="team"` |
-| `GET` | `/teams/{id}/messages` | 从 `message_links` 重构群聊历史（解析 `[speaker] text` 约定，含 direction） |
-| `POST` | `/teams/{id}/message` | 用户向团队投递消息（`PostTeamMessage{content, speaker, target_agent}`） |
+| 方法 | 路径 | 功能                                                                                                  |
+| --- | --- |-----------------------------------------------------------------------------------------------------|
+| `GET` | `/teams/{id}/stream` | **TeamLeader SSE 群聊流**（drain `team_registry.get_queue`，`__team_done__` → `[DONE]`），仅 `kind=="team"` |
+| `GET` | `/teams/{id}/messages` | 从 `message_links` 重构群聊历史（解析 `[speaker] text` 约定，含 direction）                                        |
+| `POST` | `/teams/{id}/message` | 用户向团队投递消息（`PostTeamMessage{content, speaker, target_agent}`）                                        |
 
 - **`team_messages`**：`get_graph` → 扁平化 links，解析 `content[1:close]` 得 speaker，剩余得 text。
 - **`post_team_message`**：记 `add_link(from=to=team_id, direction="chat", content="[speaker] text")`；若队列存活则推 `GROUP_MESSAGE` SSE 帧（含 `direction: mention`(有 target) / `chat`）。
@@ -703,7 +703,7 @@ sequenceDiagram
 
 ### 8.2 三层 Agent 委派机制
 
-**决策**：默认路由 agent（只读）→ 单专家（`dispatch_single`，异步）/ 团队（`dispatch_to_team`，teamleader 协调）。
+**决策**：默认路由 agent（只读）→ 单专家（`dispatch_single`，异步）/ 团队（`dispatch_to_team`，TeamLeader 协调）。
 
 **理由**：
 - **职责隔离**：入口 agent 不做破坏性操作，所有写/执行下沉到子 agent；
@@ -763,7 +763,7 @@ sequenceDiagram
 | 3 | **两个近似重复的构建函数**：`_build_default_agent` 与 `build_agents` 结构几乎相同，后者未复用前者 | 代码重复，维护负担 |
 | 4 | **测试非标准**：`tests/test_bridge.py` 调用 `bridge._collect(...)`（运行时 monkey-patch 定义），非 pytest `test_*` 函数；`pytest` 未声明依赖 | 测试可运行性需验证 |
 | 5 | **`_DONE` vs `_DONE_SENTINEL()` 不一致**：`team_runner._DONE` 是模块级常量，`single_runner._DONE_SENTINEL()` 是函数（功能等价，模式不统一） | 代码风格不一致 |
-| 6 | **`post_team_message` 未实际 resume agent**：用户投递的团队消息仅追加历史 + 推 SSE 帧，不影响运行中的 teamleader | 需 async mailbox，属后续阶段 |
+| 6 | **`post_team_message` 未实际 resume agent**：用户投递的团队消息仅追加历史 + 推 SSE 帧，不影响运行中的 TeamLeader | 需 async mailbox，属后续阶段 |
 | 7 | **`.env` 含真实密钥**：`backend/.env` 中 `ANTHROPIC_API_KEY` 为真实值 | 敏感信息，建议确认 `.gitignore` 已忽略 |
 | 8 | **`backend/README.md` 为空** | 缺少后端独立说明 |
 | 9 | **杂项文件**：`backend/` 下 `dfs_algorithm.py`、`Z`、`workspace/`、`01_code/` 等为 agent 运行时操作真实文件系统的产物 | 非核心源码，建议清理或加入 `.gitignore` |

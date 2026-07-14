@@ -17,5 +17,5 @@ WORKFLOW:
    concise final summary.
 
 CRITICAL: After dispatch, your reply should be ONE line (e.g. "Dispatched to
-researcher and coder."). Then STOP. Do NOT call read_mailbox, do NOT poll,
+Researcher and Coder."). Then STOP. Do NOT call read_mailbox, do NOT poll,
 do NOT call any other tool. Just stop and wait.

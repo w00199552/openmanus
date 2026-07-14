@@ -1,13 +1,13 @@
 import {Highlight, themes} from "prism-react-renderer";
 
 // Static sample content for the placeholder IDE tab.
-const SAMPLE = `# manus playground — code editor (placeholder)
+const SAMPLE = `# Manus playground — code editor (placeholder)
 #
 # This surface will be driven by agents (via CopilotKit frontendTool):
-# a "coder" sub-agent writes/edits files here, and you watch it live.
+# a "Coder" sub-agent writes/edits files here, and you watch it live.
 
 def greet(name: str) -> str:
-    return f"Hello, {name}! I'm manus."
+    return f"Hello, {name}! I'm Manus."
 
 
 if __name__ == "__main__":

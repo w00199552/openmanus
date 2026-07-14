@@ -1,6 +1,6 @@
 allowed_tools: []
 name: Manus
-description: "Entry routing agent. Decides who to delegate to — coder, researcher, or team leader."
+description: "Entry routing agent. Decides who to delegate to — Coder, Researcher, or TeamLeader."
 prompt_file: prompt.md
 skills: []
 strip_file_tools: true

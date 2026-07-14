@@ -22,11 +22,11 @@ function lastText(messages) {
 }
 
 test("message_start creates a streaming assistant message", () => {
-  const out = reduceEvent([], { kind: "message_start", message_id: "m1", speaker: "coder" });
+  const out = reduceEvent([], { kind: "message_start", message_id: "m1", speaker: "Coder" });
   assert.equal(out.length, 1);
   assert.equal(out[0].id, "m1");
   assert.equal(out[0].role, "assistant");
-  assert.equal(out[0].speaker, "coder");
+  assert.equal(out[0].speaker, "Coder");
   assert.equal(out[0].status, "streaming");
 });
 

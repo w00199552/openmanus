@@ -8,7 +8,7 @@ translate its langgraph stream chunks into the unified event schema.
 Two entry points:
   * ``run``    — run an agent the user is directly talking to (manus / TeamLeader
                  on a team session). Streams to the session's channel.
-  * ``start``  — run a DISPATCHED agent (a coder/researcher kicked off by the
+  * ``start``  — run a DISPATCHED agent (a Coder/Researcher kicked off by the
                  dispatch tool). Same streaming, PLUS records the outcome to the
                  whiteboard + notifies the caller via mailbox when done.
 

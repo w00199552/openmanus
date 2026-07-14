@@ -262,7 +262,7 @@ export class AgentRuntime {
         this.error = event.message || "agent error";
       }
       // In team view, a new member agent may appear mid-run (TeamLeader
-      // dispatches coder/researcher). Add its session_id directly to the member
+      // dispatches Coder/Researcher). Add its session_id directly to the member
       // cache so the merged view picks it up. We DON'T call _refreshScopeMembers
       // (which reads SessionStore.sessions) because that list may not have been
       // reloaded yet — the event's session_id is authoritative.

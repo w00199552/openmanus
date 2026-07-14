@@ -16,7 +16,7 @@
 2. **session = agent 参与者**：消息只存自己一份（单一事实源，不存两份）
 3. **协作关系是图非树**：删了 message_links 表，删 parent_id；节点存 `scope_id` 表空间归属
 4. **mailbox = 每个 session 一个收件箱**：agent 间通信 = 互发消息（dispatch/result/chat）；混合持久化（DB + 实时 Queue）
-5. **dispatch 同步/异步 = "发任务消息后等不等"**：入口 default 默认异步，teamleader 按编排选择
+5. **dispatch 同步/异步 = "发任务消息后等不等"**：入口 default 默认异步，TeamLeader 按编排选择
 6. **白板 = agent 间 artifact 空间**（软结构化：自由内容+轻元数据），存异步结果内容，完成消息只带引用；区别于 sandbox（真实文件）
 7. **sandbox = 真实文件系统工作场地**（沿用 LocalShellBackend）
 8. **协议 = 废弃 AG-UI/GROUP_MESSAGE**，统一纯 FastAPI SSE 事件 schema，所有 agent 走单一 runner
@@ -61,7 +61,7 @@
 - scope_id=null → 只看一个 session（单 agent 1:1）
 - scope_id=team_id → fan-in 该 scope 下所有后代 session 的流（team 群聊）
 
-**协作关系不存表**：靠 mailbox 消息涌现。teamleader 派 researcher = researcher 收件箱有 dispatch 消息；researcher 完成写白板 + 给 teamleader 发 result 消息（带白板引用）。
+**协作关系不存表**：靠 mailbox 消息涌现。TeamLeader 派 Researcher = Researcher 收件箱有 dispatch 消息；Researcher 完成写白板 + 给 TeamLeader 发 result 消息（带白板引用）。
 
 ### 2.2 三个表（sessions.db）
 
@@ -119,24 +119,24 @@ model_provider: str = "anthropic"  # 或 "openai"
 
 ## 3. 后端实现现状（backend/src/openmanus/）
 
-| 文件 | 职责 |
-|---|---|
-| `main.py` | FastAPI app，lifespan（init_db + ensure_default + build_agents）。挂 streams/sessions/workdir 路由 |
-| `config.py` | Settings（.env）：model_provider/model/key/ssl_verify/workdir/database_url/port=8999 |
-| `db.py` | sessions 表 CRUD（含 scope_id, list_in_scope）+ init_db（建表 + migration）。删了 message_links |
-| `mailbox.py` | **MailboxStore**：agent 间消息（send/inbox/outbox/mark_read）+ 混合持久化（DB + channel pusher 注入） |
-| `whiteboard.py` | **WhiteboardStore**：artifact CRUD（create/get/list_in_scope/list_by_author/update/delete） |
-| `event_schema.py` | 统一 SSE 事件 schema + frame 编码 + done sentinel |
-| `channels.py` | **ChannelRegistry**（单例）+ drain_single + fan_in（scope 合流）+ 注册 mailbox pusher |
-| `runner.py` | **SessionRunner**（单例）：run（async/sync）+ dispatch + convert_chunk（带去重，修 team 流 bug） |
-| `agent_factory.py` | 构 default + teamleader。build_agents/get_agent_for_workdir。挂新工具 |
-| `store.py` | get_checkpointer：SQLite / Postgres |
-| `middleware/tool_guard.py` | **ToolGuardMiddleware**：双层禁工具（default 禁 write/edit/execute/task；teamleader 禁 task） |
+| 文件 | 职责                                                                                                         |
+|---|------------------------------------------------------------------------------------------------------------|
+| `main.py` | FastAPI app，lifespan（init_db + ensure_default + build_agents）。挂 streams/sessions/workdir 路由                |
+| `config.py` | Settings（.env）：model_provider/model/key/ssl_verify/workdir/database_url/port=8999                          |
+| `db.py` | sessions 表 CRUD（含 scope_id, list_in_scope）+ init_db（建表 + migration）。删了 message_links                       |
+| `mailbox.py` | **MailboxStore**：agent 间消息（send/inbox/outbox/mark_read）+ 混合持久化（DB + channel pusher 注入）                     |
+| `whiteboard.py` | **WhiteboardStore**：artifact CRUD（create/get/list_in_scope/list_by_author/update/delete）                   |
+| `event_schema.py` | 统一 SSE 事件 schema + frame 编码 + done sentinel                                                                |
+| `channels.py` | **ChannelRegistry**（单例）+ drain_single + fan_in（scope 合流）+ 注册 mailbox pusher                                |
+| `runner.py` | **SessionRunner**（单例）：run（async/sync）+ dispatch + convert_chunk（带去重，修 team 流 bug）                          |
+| `agent_factory.py` | 构 default + TeamLeader。build_agents/get_agent_for_workdir。挂新工具                                             |
+| `store.py` | get_checkpointer：SQLite / Postgres                                                                         |
+| `middleware/tool_guard.py` | **ToolGuardMiddleware**：双层禁工具（default 禁 write/edit/execute/task；TeamLeader 禁 task）                         |
 | `api/streams.py` | POST /sessions/:id/messages（发消息+流式）+ GET /sessions/:id/stream（?scope 合流）+ GET /scopes/:id/stream + /health |
-| `api/sessions.py` | CRUD + GET /:id（assistant-ui 兼容历史压平）+ preview + reset + GET /:id/mailbox + GET /:id/whiteboard |
-| `tools/mailbox_tools.py` | **dispatch**（统一派发，sync/async）+ dispatch_to_team + send_message + read_mailbox |
-| `tools/whiteboard_tools.py` | whiteboard_write + whiteboard_read |
-| `tools/roles.py` | ROLES 字典（researcher/coder 的 prompt + allowed_tools） |
+| `api/sessions.py` | CRUD + GET /:id（assistant-ui 兼容历史压平）+ preview + reset + GET /:id/mailbox + GET /:id/whiteboard             |
+| `tools/mailbox_tools.py` | **dispatch**（统一派发，sync/async）+ dispatch_to_team + send_message + read_mailbox                              |
+| `tools/whiteboard_tools.py` | whiteboard_write + whiteboard_read                                                                         |
+| `tools/roles.py` | ROLES 字典（Researcher/Coder 的 prompt + allowed_tools）                                                        |
 
 ---
 
@@ -168,7 +168,7 @@ model_provider: str = "anthropic"  # 或 "openai"
 DiceBear adventurer，HTTP API 零依赖。Manus 专属 seed="manus-open"。subagent 用 session.id 做 seed。
 
 ### 4.4 设计系统（保留）
-深色"quiet dark cinematic"，token 在 index.css `@theme`（Tailwind v4）。role-*(teamleader绿/researcher蓝/coder橙)。
+深色"quiet dark cinematic"，token 在 index.css `@theme`（Tailwind v4）。role-*(TeamLeader绿/Researcher蓝/Coder橙)。
 
 ---
 
@@ -217,13 +217,13 @@ Mode B（Anthropic/GLM）: MODEL_PROVIDER=anthropic + MODEL=GLM-5.2 + ANTHROPIC_
 ### 重构后已验证（2026-07-01）
 - ✅ 后端启动（lifespan + migration + build_agents）
 - ✅ 单 agent 流式（POST /sessions/default/messages，事件 schema 正确）
-- ✅ dispatch 派活（default → researcher async，子 session 创建，scope_id 正确）
+- ✅ dispatch 派活（default → Researcher async，子 session 创建，scope_id 正确）
 - ✅ 历史回看（get_session 扁平化为 assistant-ui 格式）
 - ✅ 前端渲染（assistant-ui ThreadView + 流式回复 + 工具调用 + 历史消息）
 - ✅ vite proxy（health/sessions/scopes）
 
 ### 待验证 / 后续
-- ⚠️ **team 完整链路**：default → dispatch_to_team → teamleader → dispatch(子) → scope fan-in 合流，需真实跑一次完整 team 任务验证
+- ⚠️ **team 完整链路**：default → dispatch_to_team → TeamLeader → dispatch(子) → scope fan-in 合流，需真实跑一次完整 team 任务验证
 - ⚠️ **mailbox/白板 UI**：后端有 GET /:id/mailbox + /:id/whiteboard，前端还没接（任务看板视图未做）
 - ⚠️ **assistant-ui 视觉细节**：ThreadView 基本能用，但工具调用折叠/角色色等细节可能需调
 - ⚠️ **ChatInput 的 ⚙️/@/📎 占位**：未接功能

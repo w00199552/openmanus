@@ -162,7 +162,7 @@ async def fan_in(
     * ``scope_id is None`` → single-session view: just drain ``focus_session_id``.
     * ``scope_id`` set → team view: drain the scope session itself PLUS every
       participant in that scope. The member list is **re-scanned periodically**
-      so sub-agents spawned mid-stream (TeamLeader delegating researcher/coder)
+      so sub-agents spawned mid-stream (TeamLeader delegating Researcher/Coder)
       are picked up automatically without the client reconnecting.
 
     TERMINATION: the stream ends when the FOCUS session (the TeamLeader /

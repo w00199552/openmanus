@@ -11,7 +11,7 @@ import {cn} from "@/lib/utils";
  *
  * Seed mapping (drives the face):
  *   - root / default session → its session id (each chat gets a unique face)
- *   - subagent session       → its role name ("researcher" / "coder" / ...)
+ *   - subagent session       → its role name ("Researcher" / "Coder" / ...)
  *   - team session           → its member role seeds (overlapped avatars)
  */
 
@@ -115,7 +115,7 @@ export function SessionAvatar({ session, size = 36 }) {
     return <TeamAvatar seeds={members} size={size} />;
   }
   // root + subagent: single face. Each session gets its OWN face via its id,
-  // so every dispatched coder/researcher is a different person — but a given
+  // so every dispatched Coder/Researcher is a different person — but a given
   // session keeps the same face across refreshes (stable identity).
   // The default entry ("Manus") uses a dedicated seed so it has a distinct,
   // fixed face (its id is the constant "default", which would otherwise lock

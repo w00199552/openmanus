@@ -34,8 +34,8 @@ def _config_session_id(config: RunnableConfig | None) -> str:
 class DispatchInput(BaseModel):
     target_agent: str = Field(
         description=(
-            "Which agent to delegate to: 'coder' (read/edit/run files), "
-            "'researcher' (read-only investigation), or 'TeamLeader' "
+            "Which agent to delegate to: 'Coder' (read/edit/run files), "
+            "'Researcher' (read-only investigation), or 'TeamLeader' "
             "(coordinates a team for complex multi-step tasks)."
         )
     )
@@ -108,7 +108,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
                 f"background. Tell the user they can open team {team_id[:12]}."
             )
 
-        # ── specialist (coder/researcher): create a session ──
+        # ── specialist (Coder/Researcher): create a session ──
         if caller_row and caller_row.get("kind") == "team":
             scope_id = caller_session_id
         else:

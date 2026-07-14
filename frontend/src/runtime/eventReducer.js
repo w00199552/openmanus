@@ -175,7 +175,7 @@ function reduceToolCallEnd(messages, event) {
 /** An inter-agent message arriving live → a distinct assistant bubble. */
 function reduceMailbox(messages, event) {
   const mb = event.mailbox || {};
-  // Prefer the sender's role name (e.g. "coder"); fall back to session id
+  // Prefer the sender's role name (e.g. "Coder"); fall back to session id
   // prefix only if the backend couldn't resolve it.
   const from = mb.from_name || String(mb.from_session_id || "").slice(0, 8);
   const text =

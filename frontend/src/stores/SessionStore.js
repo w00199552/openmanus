@@ -32,7 +32,7 @@ export const DEFAULT_ID = "manus";
  *     New chat resets its history rather than spawning a new default.
  *   - TASKS & TEAMS group: team + subagent sessions (derived work). These come
  *     and go; dispatching from default adds one here.
- *   - When the active session is a task (the user auto-switched to a coder),
+ *   - When the active session is a task (the user auto-switched to a Coder),
  *     the default item stays in the list so the user can always get back.
  *   - Status lives ON each item: pulse dot while running, red badge for unread.
  *
