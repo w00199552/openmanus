@@ -151,7 +151,11 @@ async def build_agent(session_id: str) -> CompiledStateGraph:
     s = await session_store.get(session_id)
     if not s:
         raise ValueError(f"session not found: {session_id}")
-    name = s["name"]
+    # name may be None for legacy sessions (created before name was stored).
+    # Fall back to kind-based defaults: root → Manus, team → TeamLeader.
+    name = s.get("name")
+    if not name:
+        name = "TeamLeader" if s.get("kind") == "team" else "Manus"
     workdir = s.get("workdir") or settings.workdir
 
     # Each agent gets its OWN checkpointer instance (own aiosqlite connection).
