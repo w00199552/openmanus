@@ -16,7 +16,9 @@ const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
 /**
  * Playground — file tree + content editor for the workdir.
  *
- * Left: file tree (recursive, expandable).
+ * Tree: depth=1 on load (collapsed dirs); children are lazy-loaded on
+ * first expand via GET /files/children.
+ *
  * Right: file content (markdown editor / code viewer / text).
  * Live refresh: watches /files/watch SSE for external changes.
  * Save: PUT /files/write.
@@ -25,6 +27,10 @@ export const Playground = observer(function Playground() {
   const {runtime} = useStore();
   const [tree, setTree] = useState(null);
   const [expanded, setExpanded] = useState(new Set());
+  // childrenByDir[path] = FileNode[] (lazy-loaded)
+  const [childrenByDir, setChildrenByDir] = useState({});
+  // loadingByDir[path] = true while fetching children
+  const [loadingByDir, setLoadingByDir] = useState(new Set());
   const [file, setFile] = useState(null);
   const [draft, setDraft] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -37,13 +43,32 @@ export const Playground = observer(function Playground() {
       if (!res.ok) return;
       const data = await res.json();
       setTree(data);
-      // auto-expand first level
-      const dirs = new Set();
-      collectDirs(data, dirs);
-      setExpanded(dirs);
+      // collapse all dirs by default
+      setExpanded(new Set());
+      setChildrenByDir({});
+      setLoadingByDir(new Set());
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
+
+  const loadChildren = useCallback(async (dirPath) => {
+    // already loaded
+    if (childrenByDir[dirPath]) return;
+    setLoadingByDir((prev) => new Set(prev).add(dirPath));
+    try {
+      const res = await fetch(`${BACKEND}/files/children?path=${encodeURIComponent(dirPath)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setChildrenByDir((prev) => ({...prev, [dirPath]: data.children}));
+    } catch { /* ignore */ }
+    finally {
+      setLoadingByDir((prev) => {
+        const next = new Set(prev);
+        next.delete(dirPath);
+        return next;
+      });
+    }
+  }, [childrenByDir]);
 
   const loadFile = useCallback(async (path) => {
     try {
@@ -104,12 +129,15 @@ export const Playground = observer(function Playground() {
   }, [loadTree, loadFile, file, dirty]);
 
   const toggleDir = (path) => {
+    const wasOpen = expanded.has(path);
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
       else next.add(path);
       return next;
     });
+    // lazy load on first expand
+    if (!wasOpen && !childrenByDir[path]) loadChildren(path);
   };
 
   const onSelectFile = (path) => {
@@ -158,10 +186,10 @@ export const Playground = observer(function Playground() {
         <Panel id="sandbox-tree" defaultSize="25%" minSize="12%" maxSize="50%">
           <div className="h-full overflow-y-auto bg-sidebar/20 px-2 py-2">
             {tree && (
-              <TreeNode node={tree} expanded={expanded} toggleDir={toggleDir} onSelect={onSelectFile} selectedPath={file?.path} depth={0}/>
+              <TreeNode node={tree} expanded={expanded} toggleDir={toggleDir} onSelect={onSelectFile} selectedPath={file?.path} depth={0} childrenByDir={childrenByDir} loadingByDir={loadingByDir}/>
             )}
           </div>
-        </Panel>
+ </Panel>
 
         <Separator className="sep-bar relative w-1.5 cursor-col-resize">
           <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
@@ -184,17 +212,23 @@ export const Playground = observer(function Playground() {
   );
 });
 
-// ─── Tree node (recursive) ──────────────────────────────────────────────────
+// ─── Tree node (recursive, lazy) ─────────────────────────────────────────────
 
-function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth}) {
+function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth, childrenByDir, loadingByDir}) {
   const isDir = node.type === "dir";
   const isOpen = expanded.has(node.path);
+  const isLoading = loadingByDir.has(node.path);
+  // lazy-loaded children for this dir (if expanded); root uses built-in children
+  const children = depth === 0
+    ? (node.children || [])
+    : (isDir ? (childrenByDir[node.path] || null) : null);
 
+  // root: render children only
   if (depth === 0 && isDir) {
     return (
       <div>
         {(node.children || []).map((child) => (
-          <TreeNode key={child.path || child.name} node={child} expanded={expanded} toggleDir={toggleDir} onSelect={onSelect} selectedPath={selectedPath} depth={1}/>
+          <TreeNode key={child.path || child.name} node={child} expanded={expanded} toggleDir={toggleDir} onSelect={onSelect} selectedPath={selectedPath} depth={1} childrenByDir={childrenByDir} loadingByDir={loadingByDir}/>
         ))}
       </div>
     );
@@ -214,7 +248,11 @@ function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth}) {
       >
         {isDir ? (
           <>
-            {isOpen ? <ChevronDown className="size-3 shrink-0"/> : <ChevronRight className="size-3 shrink-0"/>}
+            {isLoading ? (
+              <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground/50"/>
+            ) : (
+              isOpen ? <ChevronDown className="size-3 shrink-0"/> : <ChevronRight className="size-3 shrink-0"/>
+            )}
             {isOpen ? <FolderOpen className="size-3 shrink-0 text-sky-400/70"/> : <Folder className="size-3 shrink-0 text-sky-400/70"/>}
           </>
         ) : (
@@ -225,9 +263,13 @@ function TreeNode({node, expanded, toggleDir, onSelect, selectedPath, depth}) {
         )}
         <span className="truncate">{node.name}</span>
       </button>
-      {isDir && isOpen && (node.children || []).map((child) => (
-        <TreeNode key={child.path || child.name} node={child} expanded={expanded} toggleDir={toggleDir} onSelect={onSelect} selectedPath={selectedPath} depth={depth + 1}/>
-      ))}
+      {isDir && isOpen && (
+        isLoading
+          ? null
+          : (children || []).map((child) => (
+            <TreeNode key={child.path || child.name} node={child} expanded={expanded} toggleDir={toggleDir} onSelect={onSelect} selectedPath={selectedPath} depth={depth + 1} childrenByDir={childrenByDir} loadingByDir={loadingByDir}/>
+          ))
+      )}
     </div>
   );
 }
@@ -274,13 +316,4 @@ function FileEditor({file, draft, setDraft}) {
   }
 
   return <pre className="p-4 text-[12px] leading-relaxed text-muted-foreground/80">{draft}</pre>;
-}
-
-// ─── helpers ────────────────────────────────────────────────────────────────
-
-function collectDirs(node, dirs) {
-  if (node.type === "dir") {
-    dirs.add(node.path);
-    for (const child of node.children || []) collectDirs(child, dirs);
-  }
 }

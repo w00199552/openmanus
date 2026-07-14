@@ -46,36 +46,73 @@ class FileNode(BaseModel):
     type: str  # "file" | "dir"
     size: int = 0
     children: list["FileNode"] = []
+    has_children: bool = False  # whether a dir has loadable children (for lazy expansion)
 
 
 FileNode.model_rebuild()
 
+# Names hidden from the file tree.
+_HIDE = frozenset({"__pycache__", "node_modules", ".git"})
+
+
+def _skip(name: str) -> bool:
+    return name.startswith(".") or name in _HIDE
+
+
+def _build_node(path: Path, relative: str) -> FileNode:
+    """Build a single FileNode with no children (children are lazy-loaded)."""
+    is_dir = path.is_dir()
+    has_children = False
+    if is_dir:
+        try:
+            has_children = any(not _skip(c.name) for c in path.iterdir())
+        except (PermissionError, OSError):
+            pass
+    return FileNode(
+        name=path.name or str(path),
+        path=relative,
+        type="dir" if is_dir else "file",
+        size=path.stat().st_size if not is_dir else 0,
+        children=[],
+        has_children=has_children,
+    )
+
+
+def _list_children(path: Path, relative: str) -> list[FileNode]:
+    """Immediate children of a directory, sorted (dirs first, then by name)."""
+    out: list[FileNode] = []
+    try:
+        for child in sorted(path.iterdir(), key=lambda c: (not c.is_dir(), c.name)):
+            if _skip(child.name):
+                continue
+            child_rel = f"{relative}/{child.name}" if relative else child.name
+            out.append(_build_node(child, child_rel))
+    except (PermissionError, OSError):
+        pass
+    return out
+
 
 @router.get("/tree")
 async def get_tree() -> FileNode:
-    """Return the file tree of the workdir (depth-limited to avoid huge trees)."""
+    """Workdir root with first-level children (depth=1).
+
+    Subdirectories are collapsed; their children are lazy-loaded via
+    ``GET /files/children``.
+    """
     wd = _workdir()
+    root = _build_node(wd, "")
+    root.children = _list_children(wd, "")
+    return root
 
-    def build(path: Path, relative: str, depth: int) -> FileNode:
-        node = FileNode(
-            name=path.name or str(wd),
-            path=relative,
-            type="dir" if path.is_dir() else "file",
-            size=path.stat().st_size if path.is_file() else 0,
-        )
-        if path.is_dir() and depth < 1:
-            try:
-                for child in sorted(path.iterdir(), key=lambda c: (not c.is_dir(), c.name)):
-                    # skip hidden + common junk
-                    if child.name.startswith(".") or child.name == "__pycache__" or child.name == "node_modules":
-                        continue
-                    child_rel = f"{relative}/{child.name}" if relative else child.name
-                    node.children.append(build(child, child_rel, depth + 1))
-            except PermissionError:
-                pass
-        return node
 
-    return build(wd, "", 0)
+@router.get("/children")
+async def get_children(path: str = Query("")) -> dict:
+    """Immediate children of a directory (for lazy tree expansion)."""
+    target = _safe_resolve(path) if path else _workdir()
+    if not target.is_dir():
+        raise HTTPException(status_code=400, detail="not a directory")
+    children = _list_children(target, path)
+    return {"path": path, "children": [c.model_dump() for c in children]}
 
 
 @router.get("/read")
