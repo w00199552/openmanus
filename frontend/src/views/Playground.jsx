@@ -47,8 +47,10 @@ export const Playground = observer(function Playground() {
   // Refs for SSE callback (avoids re-subscribing watchdog when file/dirty change)
   const fileRef = useRef(file);
   const dirtyRef = useRef(dirty);
+  const expandedRef = useRef(expanded);
   fileRef.current = file;
   dirtyRef.current = dirty;
+  expandedRef.current = expanded;
 
   const loadTree = useCallback(async () => {
     try {
@@ -76,6 +78,30 @@ export const Playground = observer(function Playground() {
       });
     }
   }, [childrenByDir, sandbox]);
+
+  /**
+   * Refresh a single directory's children (bypasses cache).
+   * Used by watchdog events to update only the affected parent dir,
+   * instead of reloading the entire tree.
+   */
+  const refreshDir = useCallback(async (dirPath) => {
+    try {
+      const children = await sandbox.loadChildren(dirPath);
+      setChildrenByDir((prev) => ({...prev, [dirPath]: children}));
+    } catch { /* ignore */ }
+  }, [sandbox]);
+
+  /**
+   * Refresh the root-level children (first level of workdir).
+   * Used when a file/dir is created/deleted at the top level.
+   */
+  const refreshRoot = useCallback(async () => {
+    try {
+      const data = await sandbox.loadTree();
+      setTree(data);
+      // preserve expanded dirs + loaded children — only swap root children
+    } catch { /* ignore */ }
+  }, [sandbox]);
 
   const loadFile = useCallback(async (path) => {
     try {
@@ -109,20 +135,40 @@ export const Playground = observer(function Playground() {
     }
   }, [sandbox.workdir, loadTree]);
 
-  // watchdog: live refresh — reconnect ONLY when workdir changes (per-session)
-  // Debounced: batch rapid events (e.g. create emits created+modified) into a
-  // single tree reload to avoid re-rendering dozens of ContextMenu components.
+  // watchdog: live refresh — targeted, preserves expand state.
+  // For created/deleted/moved: refresh only the parent dir's children.
+  // For modified: reload the open file if it matches.
+  const wdPending = useRef(new Set()); // parent dirs pending refresh
   const wdTimer = useRef(null);
   useEffect(() => {
+    const flush = () => {
+      const dirs = wdPending.current;
+      wdPending.current = new Set();
+      // refresh root if "" is pending, else refresh specific expanded dirs
+      for (const dir of dirs) {
+        if (dir === "") {
+          refreshRoot();
+        } else if (expandedRef.current.has(dir)) {
+          refreshDir(dir);
+        }
+      }
+    };
     const es = new EventSource(sandbox.watchUrl);
     es.onmessage = (ev) => {
       try {
         const evt = JSON.parse(ev.data);
         if (evt.type === "ping") return;
         if (evt.type === "created" || evt.type === "deleted" || evt.type === "moved") {
-          // debounce tree reloads — collapse rapid bursts into one
+          // parent dir of the changed file
+          const slash = evt.path.lastIndexOf("/");
+          const parent = slash >= 0 ? evt.path.substring(0, slash) : "";
+          wdPending.current.add(parent);
+          // also refresh the dir itself if a directory was created/deleted
+          if (evt.type === "created" || evt.type === "deleted") {
+            wdPending.current.add(evt.path);
+          }
           clearTimeout(wdTimer.current);
-          wdTimer.current = setTimeout(() => loadTree(), 300);
+          wdTimer.current = setTimeout(flush, 200);
         }
         if (evt.type === "modified") {
           const f = fileRef.current;
@@ -133,7 +179,7 @@ export const Playground = observer(function Playground() {
       } catch { /* ignore */ }
     };
     return () => { es.close(); clearTimeout(wdTimer.current); };
-  }, [sandbox.workdir, sandbox, loadTree, loadFile]);
+  }, [sandbox.workdir, sandbox, loadFile, refreshDir, refreshRoot]);
 
   const toggleDir = (path) => {
     const wasOpen = expanded.has(path);
