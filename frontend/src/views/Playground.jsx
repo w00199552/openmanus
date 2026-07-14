@@ -161,13 +161,6 @@ export const Playground = observer(function Playground() {
         <button onClick={loadTree} className="rounded-md p-1 text-muted-foreground transition hover:bg-card hover:text-foreground" title="Refresh">
           <RefreshCw className="size-3.5"/>
         </button>
-        {/* current workdir */}
-        {runtime.workdir && (
-          <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground/50" title={runtime.workdir}>
-            <FolderTree className="size-3 shrink-0"/>
-            <span className="truncate">{runtime.workdir}</span>
-          </span>
-        )}
         <div className="flex-1"/>
         {file && (
           <>
@@ -191,12 +184,21 @@ export const Playground = observer(function Playground() {
       <Group orientation="horizontal" className="min-h-0 flex-1">
         {/* file tree */}
         <Panel id="sandbox-tree" defaultSize="25%" minSize="12%" maxSize="50%">
-          <div className="h-full overflow-y-auto bg-sidebar/20 px-2 py-2">
-            {tree && (
-              <TreeNode node={tree} expanded={expanded} toggleDir={toggleDir} onSelect={onSelectFile} selectedPath={file?.path} depth={0} childrenByDir={childrenByDir} loadingByDir={loadingByDir}/>
+          <div className="flex h-full flex-col bg-sidebar/20">
+            {/* current workdir header */}
+            {runtime.workdir && (
+              <div className="flex shrink-0 items-center gap-1.5 border-b border-border/40 px-3 py-1.5" title={runtime.workdir}>
+                <FolderTree className="size-3.5 shrink-0 text-sky-400/70"/>
+                <span className="truncate text-[11px] font-medium text-foreground/80">{runtime.workdir}</span>
+              </div>
             )}
+            <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+              {tree && (
+                <TreeNode node={tree} expanded={expanded} toggleDir={toggleDir} onSelect={onSelectFile} selectedPath={file?.path} depth={0} childrenByDir={childrenByDir} loadingByDir={loadingByDir}/>
+              )}
+            </div>
           </div>
- </Panel>
+        </Panel>
 
         <Separator className="sep-bar relative w-1.5 cursor-col-resize">
           <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
