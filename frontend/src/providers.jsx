@@ -1,4 +1,4 @@
-import {Fragment} from "react";
+import { Fragment } from "react";
 
 /**
  * App providers.
@@ -8,7 +8,7 @@ import {Fragment} from "react";
  * is kept as a no-op so main.jsx's tree shape stays stable.
  */
 const AppProviders = function AppProviders({ children }) {
-  return <Fragment>{children}</Fragment>;
+    return <Fragment>{children}</Fragment>;
 };
 
 export { AppProviders };

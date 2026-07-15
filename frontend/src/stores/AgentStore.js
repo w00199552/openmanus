@@ -1,6 +1,11 @@
-import {makeAutoObservable, runInAction} from "mobx";
+import { makeAutoObservable, runInAction } from "mobx";
 
-import {getAgent, listAgents, listSkills, listTools} from "@/services/agentService";
+import {
+    getAgent,
+    listAgents,
+    listSkills,
+    listTools,
+} from "@/services/agentService";
 
 const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
 
@@ -25,7 +30,7 @@ export class AgentStore {
     skillDraft = new Set();
 
     _showToast(type, message) {
-        this.toast = {type, message};
+        this.toast = { type, message };
         setTimeout(() => {
             runInAction(() => {
                 this.toast = null;
@@ -42,7 +47,7 @@ export class AgentStore {
         this.loading = true;
         try {
             const data = await listAgents();
-            console.log(data)
+            console.log(data);
             runInAction(() => {
                 this.agents = data;
                 this.loading = false;
@@ -63,7 +68,8 @@ export class AgentStore {
             runInAction(() => {
                 this.tools = data;
             });
-        } catch { /* ignore */
+        } catch {
+            /* ignore */
         }
     }
 
@@ -74,7 +80,8 @@ export class AgentStore {
             runInAction(() => {
                 this.skills = data;
             });
-        } catch { /* ignore */
+        } catch {
+            /* ignore */
         }
     }
 
@@ -82,7 +89,11 @@ export class AgentStore {
     async selectAgent(name) {
         this.loading = true;
         try {
-            const [agent, tools, skills] = await Promise.all([getAgent(name), listTools(), listSkills()]);
+            const [agent, tools, skills] = await Promise.all([
+                getAgent(name),
+                listTools(),
+                listSkills(),
+            ]);
             runInAction(() => {
                 this.current = agent;
                 this.tools = tools;
@@ -133,16 +144,19 @@ export class AgentStore {
         if (!this.current) return;
         this.saving = true;
         try {
-            const res = await fetch(`${BACKEND}/agents/${encodeURIComponent(this.current.name)}`, {
-                method: "PUT",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({
-                    prompt: this.promptDraft,
-                    description: this.descriptionDraft,
-                    tools: [...this.toolDraft],
-                    skills: [...this.skillDraft]
-                }),
-            });
+            const res = await fetch(
+                `${BACKEND}/agents/${encodeURIComponent(this.current.name)}`,
+                {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        prompt: this.promptDraft,
+                        description: this.descriptionDraft,
+                        tools: [...this.toolDraft],
+                        skills: [...this.skillDraft],
+                    }),
+                }
+            );
             if (!res.ok) throw new Error(`save failed: ${res.status}`);
             await this.selectAgent(this.current.name);
             this._showToast("success", "Agent saved successfully");
@@ -163,8 +177,14 @@ export class AgentStore {
         try {
             const res = await fetch(`${BACKEND}/agents`, {
                 method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({name, prompt, tools, skills, description}),
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name,
+                    prompt,
+                    tools,
+                    skills,
+                    description,
+                }),
             });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
@@ -185,7 +205,10 @@ export class AgentStore {
     /** Delete a custom agent. Returns true on success. */
     async remove(name) {
         try {
-            const res = await fetch(`${BACKEND}/agents/${encodeURIComponent(name)}`, {method: "DELETE"});
+            const res = await fetch(
+                `${BACKEND}/agents/${encodeURIComponent(name)}`,
+                { method: "DELETE" }
+            );
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
                 throw new Error(err.detail || `delete failed: ${res.status}`);

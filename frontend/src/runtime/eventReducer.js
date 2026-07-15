@@ -68,133 +68,158 @@
  * @returns {Message[]}
  */
 export function reduceEvent(messages, event) {
-  switch (event.kind) {
-    case "message_start":
-      return ensureMessage(messages, event.message_id, event.speaker || "assistant");
-    case "text_delta":
-      return reduceTextDelta(messages, event);
-    case "thinking_delta":
-      return reduceThinkingDelta(messages, event);
-    case "message_end":
-      return reduceMessageEnd(messages, event);
-    case "tool_call_start":
-      return reduceToolCallStart(messages, event);
-    case "tool_call_args":
-      return reduceToolCallArgs(messages, event);
-    case "tool_call_result":
-      return reduceToolCallResult(messages, event);
-    case "tool_call_end":
-      return reduceToolCallEnd(messages, event);
-    case "mailbox":
-      return reduceMailbox(messages, event);
-    case "done":
-    case "step_start":
-    case "step_end":
-      return messages; // no message mutation; lifecycle handled by the runtime
-    default:
-      return messages;
-  }
+    switch (event.kind) {
+        case "message_start":
+            return ensureMessage(
+                messages,
+                event.message_id,
+                event.speaker || "assistant"
+            );
+        case "text_delta":
+            return reduceTextDelta(messages, event);
+        case "thinking_delta":
+            return reduceThinkingDelta(messages, event);
+        case "message_end":
+            return reduceMessageEnd(messages, event);
+        case "tool_call_start":
+            return reduceToolCallStart(messages, event);
+        case "tool_call_args":
+            return reduceToolCallArgs(messages, event);
+        case "tool_call_result":
+            return reduceToolCallResult(messages, event);
+        case "tool_call_end":
+            return reduceToolCallEnd(messages, event);
+        case "mailbox":
+            return reduceMailbox(messages, event);
+        case "done":
+        case "step_start":
+        case "step_end":
+            return messages; // no message mutation; lifecycle handled by the runtime
+        default:
+            return messages;
+    }
 }
 
 // ─── text / thinking ───────────────────────────────────────────────────────
 
 /** Append a text delta to the message's last open text part (or open one). */
 function reduceTextDelta(messages, event) {
-  const ms = ensureMessage(messages, event.message_id, event.speaker || "assistant");
-  return replaceMessage(ms, event.message_id, (m) => {
-    const parts = m.content;
-    const last = parts[parts.length - 1];
-    if (last && last.type === "text") {
-      // extend the open text part with a fresh ref
-      const newParts = parts.slice(0, -1);
-      newParts.push({ ...last, text: last.text + (event.delta || "") });
-      return { ...m, content: newParts };
-    }
-    return { ...m, content: [...parts, { type: "text", text: event.delta || "" }] };
-  });
+    const ms = ensureMessage(
+        messages,
+        event.message_id,
+        event.speaker || "assistant"
+    );
+    return replaceMessage(ms, event.message_id, (m) => {
+        const parts = m.content;
+        const last = parts[parts.length - 1];
+        if (last && last.type === "text") {
+            // extend the open text part with a fresh ref
+            const newParts = parts.slice(0, -1);
+            newParts.push({ ...last, text: last.text + (event.delta || "") });
+            return { ...m, content: newParts };
+        }
+        return {
+            ...m,
+            content: [...parts, { type: "text", text: event.delta || "" }],
+        };
+    });
 }
 
 /** Append a reasoning/thinking delta to the message's thinking field. */
 function reduceThinkingDelta(messages, event) {
-  const ms = ensureMessage(messages, event.message_id, event.speaker || "assistant");
-  return replaceMessage(ms, event.message_id, (m) => ({
-    ...m,
-    thinking: (m.thinking || "") + (event.delta || ""),
-  }));
+    const ms = ensureMessage(
+        messages,
+        event.message_id,
+        event.speaker || "assistant"
+    );
+    return replaceMessage(ms, event.message_id, (m) => ({
+        ...m,
+        thinking: (m.thinking || "") + (event.delta || ""),
+    }));
 }
 
 /** Mark a message complete (status streaming → complete). */
 function reduceMessageEnd(messages, event) {
-  return replaceMessage(messages, event.message_id, (m) => ({ ...m, status: "complete" }));
+    return replaceMessage(messages, event.message_id, (m) => ({
+        ...m,
+        status: "complete",
+    }));
 }
 
 // ─── tool calls ────────────────────────────────────────────────────────────
 
 /** Open a new tool-call part on the message. */
 function reduceToolCallStart(messages, event) {
-  const ms = ensureMessage(messages, event.message_id, event.speaker || "assistant");
-  return replaceMessage(ms, event.message_id, (m) => ({
-    ...m,
-    content: [
-      ...m.content,
-      {
-        type: "tool-call",
-        toolCallId: event.call_id,
-        toolName: event.tool || "tool",
-        args: "",
-        result: null,
-        _streaming: true,
-      },
-    ],
-  }));
+    const ms = ensureMessage(
+        messages,
+        event.message_id,
+        event.speaker || "assistant"
+    );
+    return replaceMessage(ms, event.message_id, (m) => ({
+        ...m,
+        content: [
+            ...m.content,
+            {
+                type: "tool-call",
+                toolCallId: event.call_id,
+                toolName: event.tool || "tool",
+                args: "",
+                result: null,
+                _streaming: true,
+            },
+        ],
+    }));
 }
 
 /** Append a streamed args fragment to the matching tool-call part. */
 function reduceToolCallArgs(messages, event) {
-  return replaceToolPart(messages, event.call_id, (p) => ({
-    ...p,
-    args: (p.args || "") + (event.args_json || ""),
-  }));
+    return replaceToolPart(messages, event.call_id, (p) => ({
+        ...p,
+        args: (p.args || "") + (event.args_json || ""),
+    }));
 }
 
 /** Set the result of a tool-call part. */
 function reduceToolCallResult(messages, event) {
-  return replaceToolPart(messages, event.call_id, (p) => ({
-    ...p,
-    result: event.result,
-  }));
+    return replaceToolPart(messages, event.call_id, (p) => ({
+        ...p,
+        result: event.result,
+    }));
 }
 
 /** Mark a tool-call part as no longer streaming. */
 function reduceToolCallEnd(messages, event) {
-  return replaceToolPart(messages, event.call_id, (p) => ({ ...p, _streaming: false }));
+    return replaceToolPart(messages, event.call_id, (p) => ({
+        ...p,
+        _streaming: false,
+    }));
 }
 
 // ─── mailbox (inter-agent messages rendered as a bubble) ───────────────────
 
 /** An inter-agent message arriving live → a distinct assistant bubble. */
 function reduceMailbox(messages, event) {
-  const mb = event.mailbox || {};
-  // Prefer the sender's role name (e.g. "Coder"); fall back to session id
-  // prefix only if the backend couldn't resolve it.
-  const from = mb.from_name || String(mb.from_session_id || "").slice(0, 8);
-  const text =
-    mb.kind === "result"
-      ? `✅ ${(mb.content || "").slice(0, 160)}`
-      : mb.kind === "dispatch"
-        ? `📋 ${(mb.content || "").slice(0, 120)}`
-        : `💬 ${(mb.content || "").slice(0, 200)}`;
-  const msg = {
-    id: `mb-${mb.id}`,
-    role: "assistant",
-    speaker: `agent:${from}`,
-    content: [{ type: "text", text }],
-    status: "complete",
-    createdAt: Date.now(),
-  };
-  // dedupe by id (a mailbox frame could be re-delivered)
-  if (messages.some((m) => m.id === msg.id)) return messages;
-  return [...messages, msg];
+    const mb = event.mailbox || {};
+    // Prefer the sender's role name (e.g. "Coder"); fall back to session id
+    // prefix only if the backend couldn't resolve it.
+    const from = mb.from_name || String(mb.from_session_id || "").slice(0, 8);
+    const text =
+        mb.kind === "result"
+            ? `✅ ${(mb.content || "").slice(0, 160)}`
+            : mb.kind === "dispatch"
+              ? `📋 ${(mb.content || "").slice(0, 120)}`
+              : `💬 ${(mb.content || "").slice(0, 200)}`;
+    const msg = {
+        id: `mb-${mb.id}`,
+        role: "assistant",
+        speaker: `agent:${from}`,
+        content: [{ type: "text", text }],
+        status: "complete",
+        createdAt: Date.now(),
+    };
+    // dedupe by id (a mailbox frame could be re-delivered)
+    if (messages.some((m) => m.id === msg.id)) return messages;
+    return [...messages, msg];
 }
 
 // ─── immutable helpers (the heart of the streaming fix) ────────────────────
@@ -209,17 +234,17 @@ function reduceMailbox(messages, event) {
  * @returns {Message[]}
  */
 export function ensureMessage(messages, messageId, speaker) {
-  if (messageId && messages.some((m) => m.id === messageId)) return messages;
-  const msg = {
-    id: messageId || `a-${Date.now()}`,
-    role: "assistant",
-    speaker,
-    thinking: "",
-    content: [],
-    status: "streaming",
-    createdAt: Date.now(),
-  };
-  return [...messages, msg];
+    if (messageId && messages.some((m) => m.id === messageId)) return messages;
+    const msg = {
+        id: messageId || `a-${Date.now()}`,
+        role: "assistant",
+        speaker,
+        thinking: "",
+        content: [],
+        status: "streaming",
+        createdAt: Date.now(),
+    };
+    return [...messages, msg];
 }
 
 /**
@@ -232,11 +257,11 @@ export function ensureMessage(messages, messageId, speaker) {
  * @returns {Message[]}
  */
 export function replaceMessage(messages, messageId, updater) {
-  const i = messages.findIndex((m) => m.id === messageId);
-  if (i < 0) return messages;
-  const next = messages.slice();
-  next[i] = updater(messages[i]);
-  return next;
+    const i = messages.findIndex((m) => m.id === messageId);
+    if (i < 0) return messages;
+    const next = messages.slice();
+    next[i] = updater(messages[i]);
+    return next;
 }
 
 /**
@@ -249,17 +274,20 @@ export function replaceMessage(messages, messageId, updater) {
  * @returns {Message[]}
  */
 export function replaceToolPart(messages, callId, updater) {
-  for (let mi = messages.length - 1; mi >= 0; mi--) {
-    const parts = messages[mi].content || [];
-    for (let pi = parts.length - 1; pi >= 0; pi--) {
-      if (parts[pi].type === "tool-call" && parts[pi].toolCallId === callId) {
-        const newParts = parts.slice();
-        newParts[pi] = updater(parts[pi]);
-        const next = messages.slice();
-        next[mi] = { ...messages[mi], content: newParts };
-        return next;
-      }
+    for (let mi = messages.length - 1; mi >= 0; mi--) {
+        const parts = messages[mi].content || [];
+        for (let pi = parts.length - 1; pi >= 0; pi--) {
+            if (
+                parts[pi].type === "tool-call" &&
+                parts[pi].toolCallId === callId
+            ) {
+                const newParts = parts.slice();
+                newParts[pi] = updater(parts[pi]);
+                const next = messages.slice();
+                next[mi] = { ...messages[mi], content: newParts };
+                return next;
+            }
+        }
     }
-  }
-  return messages;
+    return messages;
 }

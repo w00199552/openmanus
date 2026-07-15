@@ -1,9 +1,9 @@
-import {clsx} from "clsx"
-import {twMerge} from "tailwind-merge"
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 
 /** Merge tailwind classes with conditional logic (shadcn standard helper). */
 export function cn(...inputs) {
-  return twMerge(clsx(inputs))
+    return twMerge(clsx(inputs));
 }
 
 /**
@@ -13,10 +13,10 @@ export function cn(...inputs) {
  * An empty `relPath` returns the workdir untouched (tree root).
  */
 export function joinAbsPath(workdir, relPath) {
-  if (!relPath) return workdir
-  const sep = workdir.includes("\\") ? "\\" : "/"
-  const rel = relPath.split("/").filter(Boolean).join(sep)
-  return `${workdir}${sep}${rel}`
+    if (!relPath) return workdir;
+    const sep = workdir.includes("\\") ? "\\" : "/";
+    const rel = relPath.split("/").filter(Boolean).join(sep);
+    return `${workdir}${sep}${rel}`;
 }
 
 /**
@@ -25,27 +25,27 @@ export function joinAbsPath(workdir, relPath) {
  * whether the copy succeeded.
  */
 export async function copyText(text) {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text)
-      return true
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+    } catch {
+        // fall through to legacy path
     }
-  } catch {
-    // fall through to legacy path
-  }
-  try {
-    const ta = document.createElement("textarea")
-    ta.value = text
-    ta.style.position = "fixed"
-    ta.style.top = "-9999px"
-    ta.style.opacity = "0"
-    document.body.appendChild(ta)
-    ta.focus()
-    ta.select()
-    const ok = document.execCommand("copy")
-    document.body.removeChild(ta)
-    return ok
-  } catch {
-    return false
-  }
+    try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.top = "-9999px";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+    } catch {
+        return false;
+    }
 }
