@@ -34,9 +34,8 @@ def _config_session_id(config: RunnableConfig | None) -> str:
 class DispatchInput(BaseModel):
     target_agent: str = Field(
         description=(
-            "Which agent to delegate to: 'Coder' (read/edit/run files), "
-            "'Researcher' (read-only investigation), or 'TeamLeader' "
-            "(coordinates a team for complex multi-step tasks)."
+            "Name of the agent to delegate to. Available agents are listed in "
+            "this tool's description. Use the exact name."
         )
     )
     task: str = Field(
@@ -45,6 +44,23 @@ class DispatchInput(BaseModel):
             "the agent receives. Include goals, file paths, constraints."
         )
     )
+
+
+def _build_agent_registry() -> str:
+    """Build a human-readable list of available agents from agent_loader.
+
+    Includes each agent's name + description, so the LLM knows exactly who it
+    can dispatch to. Called at tool-construction time (once per agent build).
+    """
+    lines = []
+    for name in sorted(agent_loader.all_names()):
+        cfg = agent_loader.get(name) or {}
+        desc = cfg.get("description", "").strip()
+        if desc:
+            lines.append(f"  - {name}: {desc}")
+        else:
+            lines.append(f"  - {name}")
+    return "\n".join(lines)
 
 
 def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
@@ -56,7 +72,9 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
     Results come back via mailbox (the caller reads them on its next turn).
     """
 
-    @tool("dispatch", args_schema=DispatchInput)
+    # Dynamically list available agents so the LLM knows who it can dispatch to.
+    agent_registry = _build_agent_registry()
+
     async def dispatch(
         target_agent: str,
         task: str,
@@ -65,9 +83,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
         """Delegate a task to another agent. Returns immediately; the agent
         runs in the background. Check read_mailbox later for the result.
 
-        - target_agent='Coder'/'Researcher': a single specialist runs the task.
-        - target_agent='TeamLeader': a team is created; the leader coordinates
-          further specialists. Use this for complex multi-step work.
+        Available agents (use the exact name as target_agent):
         """
         if not agent_loader.get(target_agent):
             return f"Unknown agent '{target_agent}'. Available: {', '.join(agent_loader.all_names())}."
@@ -143,7 +159,10 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
             f"background. Use read_mailbox later to check the result."
         )
 
-    return dispatch
+    # Inject the agent list into the docstring so the LLM sees all available agents.
+    dispatch.__doc__ = (dispatch.__doc__ or "") + agent_registry
+    # Wrap with @tool to register as a LangChain tool.
+    return tool("dispatch", args_schema=DispatchInput)(dispatch)
 
 
 def make_send_message_tool() -> BaseTool:
