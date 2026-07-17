@@ -132,6 +132,30 @@ def _build_tools(tool_names: list[str], workdir: str, agent_name: str = "") -> l
     return tools
 
 
+def _resolve_prompt(raw_prompt: str, self_name: str) -> str:
+    """Replace placeholders in an agent's prompt with dynamic content.
+
+    Supported placeholders:
+      {{AGENTS}} — list of all OTHER agents (name + description), so the
+                   entry agent knows who it can dispatch to. Excludes itself.
+    """
+    if "{{AGENTS}}" not in raw_prompt:
+        return raw_prompt
+
+    lines = []
+    for agent_name in sorted(agent_loader.all_names()):
+        if agent_name == self_name:
+            continue  # don't list yourself
+        agent_cfg = agent_loader.get(agent_name) or {}
+        desc = (agent_cfg.get("description") or "").strip()
+        if desc:
+            lines.append(f"- {agent_name}: {desc}")
+        else:
+            lines.append(f"- {agent_name}")
+
+    return raw_prompt.replace("{{AGENTS}}", "\n".join(lines))
+
+
 async def build_agent(session_id: str) -> CompiledStateGraph:
     """Create a FRESH, independent agent for a session.
 
@@ -190,7 +214,7 @@ async def build_agent(session_id: str) -> CompiledStateGraph:
 
     return create_deep_agent(
         model=_default_model,
-        system_prompt=cfg["prompt"],
+        system_prompt=_resolve_prompt(cfg["prompt"], name),
         tools=tools,
         backend=backend,
         checkpointer=own_checkpointer,
