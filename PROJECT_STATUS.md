@@ -1,52 +1,163 @@
 # OpenManus 项目记忆文档
 
-> 最后更新：2026-07-01（统一 Session 架构大重构完成）
+> 最后更新：2026-07-18
 > 仓库：https://github.com/w00199552/deepmanus.git (main 分支)
 > 这份文档是项目的"长期记忆"。每次会话开始时优先读它恢复上下文。
 
 ---
 
-## 0. 最新重大变更：统一 Session 架构（refactor/unified-session-architecture 分支）
+## 0. 最新进展（2026-07-14 ~ 07-18）
 
-彻底重构了 session 架构，把"单 agent / team / team 内子 agent"三套并行管道统一为一套。
-**核心隐喻：系统 = 一群 agent 参与者在一个共享空间里互相发消息（字面意义的多人聊天）。**
+### Agent 生命周期重构（方案 A：不常驻，按需创建用完即丢）
 
-### 9 条架构决策
-1. **看输出 = `(scope_id, session_id)` 二元组**：scope=null 看单流，scope=team 看后代合流（纯透传 fan-in，按 session_id 归位，不重排不合并）
-2. **session = agent 参与者**：消息只存自己一份（单一事实源，不存两份）
-3. **协作关系是图非树**：删了 message_links 表，删 parent_id；节点存 `scope_id` 表空间归属
-4. **mailbox = 每个 session 一个收件箱**：agent 间通信 = 互发消息（dispatch/result/chat）；混合持久化（DB + 实时 Queue）
-5. **dispatch 同步/异步 = "发任务消息后等不等"**：入口 default 默认异步，TeamLeader 按编排选择
-6. **白板 = agent 间 artifact 空间**（软结构化：自由内容+轻元数据），存异步结果内容，完成消息只带引用；区别于 sandbox（真实文件）
-7. **sandbox = 真实文件系统工作场地**（沿用 LocalShellBackend）
-8. **协议 = 废弃 AG-UI/GROUP_MESSAGE**，统一纯 FastAPI SSE 事件 schema，所有 agent 走单一 runner
-9. **前端 = assistant-ui ExternalStoreRuntime + mobx**
+彻底重构了 agent 实例的生命周期管理。
 
-### 删除的旧概念/文件
-- AG-UI 协议层（agui_bridge.py、ag-ui-protocol 依赖）
-- message_links 表（协作图边表）
-- single_runner.py + team_runner.py（两个 runner/Registry）
-- dispatch_single/dispatch_task/dispatch_to_team 三个工具（统一为 dispatch + dispatch_to_team）
-- ChatStore + TeamStore（双 store）→ MessagesStore（单 store）
-- agentService + teamService → streamService
-- GROUP_MESSAGE 自定义帧
-- ChatMessages + TeamMessages → ThreadView（assistant-ui primitives）
+**核心原则：**
+1. **agent 实例不缓存、不常驻** — 每次 `_stream` 时按 session_id 临时 build，跑完 `close_agent` 丢弃
+2. **`build_agent(session_id)`** — 只接收 session_id，name 和 workdir 从 DB 查，保证一致性
+3. **cd 不碰 agent** — 只更新 session 行的 workdir，下次消息自然用新 workdir
+4. **engine 是唯一 build 点** — `_stream` 内部 build agent，上层只传 session_id
+
+**数据流：**
+```
+任何入口 (post_message / dispatch / wake-up)
+  ↓ 只传 session_id
+engine._stream(session_id)
+  ↓
+build_agent(session_id) → 从 DB 读 name+workdir → 新 checkpointer → 新 graph
+  ↓
+agent.astream() → 跑完 → _final_text 提取结果
+  ↓
+close_agent(agent) → 关闭 checkpointer 连接 → 释放资源
+  ↓
+启动 pending dispatch (只传 session_id) / 检查 inbox
+```
+
+**为什么不会丢上下文：** checkpointer 连接同一个 SQLite DB 文件，按 thread_id（= session_id）隔离。重建 agent 只是新建一个执行器，历史消息全在 DB 里。
+
+**删除的旧机制：**
+- `_entry_agent_cache` — 按 workdir 缓存 Manus 的字典（已删）
+- `build_entry_agent(workdir)` — 缓存入口 agent 的函数（已删）
+- `ENTRY_AGENT = "Manus"` 常量（已删）
+- `app.state.agent` — 全局共享 agent 引用（已删）
+- `post_message` 里的 `build_entry_agent` 调用（已删）
+- `_resolve_agent` 死代码（已删）
+
+### Sandbox 文件浏览器（完整功能链）
+
+#### SandboxStore 解耦
+新建 `SandboxStore`，拥有 workdir + cd + 文件 CRUD，从 AgentRuntime 剥离：
+- `workdir` observable（唯一来源）
+- `syncFromSession(sessionId)` — session 切换时从 session 行同步
+- `cd(sessionId, path)` — POST /sessions/:id/cd + 更新 workdir
+- `loadTree() / loadChildren() / loadFile() / saveFile()` — 文件操作，自动带 ?workdir= 参数
+- `deletePath() / createDir() / createFile()` — 右键菜单操作
+- `watchUrl` getter — watchdog SSE URL
+
+AgentRuntime 瘦身：删除 workdir 字段 + _cd 方法，cd 委托给 SandboxStore。
+
+#### cd 命令（独立端点，不走 agent 流）
+- `POST /sessions/:id/cd` — 专用端点
+- 支持相对路径（`cd src`）、`cd ..` 回退、`cd ../backend/src` 多级相对、绝对路径
+- 在盘根（`D:\`）`cd ..` 停在 `D:\`，和 cmd 一致
+- 前端 `agentRuntime.send()` 拦截 `cd` 前缀 → 委托 `sandbox.cd()`
+
+#### 懒加载目录树
+- 后端：`GET /files/tree` 返回根 + 第一层（目录折叠），新增 `has_children` 字段
+- 后端：`GET /files/children?path=` 按需加载单层子目录
+- 前端：目录默认折叠，首次展开时 fetch children，按目录缓存
+- 文件操作自动带 `?workdir=` 参数（per-session sandbox）
+
+#### watchdog 实时刷新
+- 后端：`_FileWatcher` — 单目录监听，随当前 session 的 workdir 切换
+  - `start(wd)`：目标变化时 re-point observer（unschedule 旧 + schedule 新）
+  - `stop(q)`：带队列身份判断，过期连接不 kill 当前活跃连接
+  - `virtual_mode=True` 用于文件操作限制（不影响 shell execute）
+  - `Observer()` + `.daemon = True`（不能传 `Observer(daemon=True)` 会 TypeError）
+- 前端：`useEffect([sandbox.workdir])` 切换 session 时自动重连 SSE
+- **局部刷新**：watchdog 事件 → 提取 evt.path 的父目录 → 只 refreshDir 该目录，不重载整棵树
+- **防抖**：wdPending Set 收集待刷新目录，200ms 批量 flush
+- 修复了 Radix ContextMenuTrigger 包裹整棵树导致卡死的问题（改为原生 onContextMenu + createPortal）
+
+#### 右键菜单 + Modal 确认
+- 右键目录：New File / New Folder / Delete
+- 右键文件：Delete
+- 右键空白区：New File / New Folder
+- 删除 → Radix Dialog 确认弹窗（destructive 红色按钮）
+- 创建 → Radix Dialog + input（回车提交，校验空名称/路径分隔符）
+- workdir 旁有 `+` dropdown（Radix Popover）快捷创建
+
+#### 后端新增端点
+| 方法 | 路径 | 功能 |
+|------|------|------|
+| GET | `/files/tree?workdir=` | 根 + 第一层子节点（has_children） |
+| GET | `/files/children?path=&workdir=` | 懒加载子目录 |
+| GET | `/files/read?path=&workdir=` | 读文件 |
+| PUT | `/files/write` | 写文件 `{path, content, workdir}` |
+| DELETE | `/files/delete` | 删除文件/目录 `{path, workdir}` |
+| POST | `/files/mkdir` | 创建目录 `{path, workdir}` |
+| POST | `/files/create` | 创建空文件 `{path, workdir}` |
+| GET | `/files/watch?workdir=` | watchdog SSE |
+
+### dispatch 工具动态注入 agent 列表
+
+**问题：** `DispatchInput` description 和 dispatch docstring 写死了 Coder/Researcher/TeamLeader，用户自定义的 agent 不在其中，Manus 不知道可以委派给它。
+
+**修复：**
+- `_build_agent_registry()` — 从 agent_loader 动态生成所有 agent 的 name + description
+- dispatch 工具构造时注入到 docstring
+- Manus prompt.md 用 `{{AGENTS}}` 占位符
+
+### Manus prompt 占位符 `{{AGENTS}}`
+
+**`_resolve_prompt(raw_prompt, self_name)`** — 加载 prompt 后替换占位符：
+- `{{AGENTS}}` → 所有其他 agent 的 name + description（不含自己）
+
+**三个需求全部满足：**
+1. 单一数据源 — prompt 只从 `~/.openmanus/agents/Manus/prompt.md` 读取
+2. 占位符替换 — `{{AGENTS}}` 动态查询 agent_loader，拼装 name + description
+3. 热更新 — agent 实例不常驻，每次 build_agent 重新加载 prompt + 替换占位符
+
+### 子 agent workdir 配置
+
+`LocalShellBackend(root_dir=workdir, virtual_mode=True)` — 文件操作限制在 workdir 内：
+- `ls`/`read_file`/`write_file`/`glob`/`grep` 只能看到和操作 workdir 下的文件
+- `..` 路径遍历被拒绝
+- `execute()` shell 命令不受 virtual_mode 限制（deepagents 设计），cwd=root_dir
+- `ReadOnlyFilesystemBackend` 强制 `virtual_mode=True`（CompositeBackend 路由需要）
+
+### 代码格式化
+- 前端：prettier（4-space, doubleQuote, trailingComma=es5, LF）
+- 根目录 `.editorconfig`（4-space, LF，统一 PyCharm/WebStorm）
+
+### Agent 名称大小写统一
+- agent.yaml: `Coder`/`Researcher`/`TeamLeader`/`Manus`（驼峰）
+- `mailbox_tools.py` TeamLeader 判断保持 `.lower()` 容错（LLM 可能传任意大小写）
+- `agent_loader.get()` 本身大小写不敏感
 
 ---
 
 ## 1. 项目定位
 
-**OpenManus** = opencode 风格的 AI 编码 Agent 克隆。
+**OpenManus** = opencode 风格的 AI 编码 Agent 平台。
 
-- 后端：**Python FastAPI + deepagents (LangChain/LangGraph)**，统一 SSE 事件协议
-- 前端：**vite + react (JS/JSX) + mobx + tailwindcss v4 + assistant-ui (v0.14, ExternalStoreRuntime)**
+- 后端：**Python FastAPI + deepagents (LangChain/LangGraph)**
+- 前端：**vite + react (JS/JSX) + mobx + tailwindcss v4**
+- 桌面：**Electron**（frameless window）
 - 模型：双 provider（Anthropic 协议 / OpenAI 兼容）
 - 数据流：view → store (mobx) → service → backend（严格单向）
-- 仓库目录：`deepagents-opencode/`（含 backend/、frontend/）
+- 仓库目录：`deepagents-opencode/`（含 backend/、frontend/、electron/）
+
+### 核心特性
+- **可配置的插件化多 Agent 平台**：Agent 是文件（YAML + prompt.md），Tool 是用户定义的 Python 文件，Skill 是 SKILL.md 文件包
+- **Agent 间 dispatch**：Manus 路由 → Coder/Researcher/TeamLeader，TeamLeader 协调多专家
+- **Team 群聊视图**：scope fan-in 多 session 的 SSE 流
+- **Sandbox 文件浏览器**：workdir 跟随 session，watchdog 实时刷新，右键 CRUD
+- **Mailbox 消息系统**：agent 间通信（dispatch/result/chat）
 
 ---
 
-## 2. 核心架构（重构后）
+## 2. 核心架构
 
 ### 2.1 统一数据模型
 
@@ -61,126 +172,152 @@
 - scope_id=null → 只看一个 session（单 agent 1:1）
 - scope_id=team_id → fan-in 该 scope 下所有后代 session 的流（team 群聊）
 
-**协作关系不存表**：靠 mailbox 消息涌现。TeamLeader 派 Researcher = Researcher 收件箱有 dispatch 消息；Researcher 完成写白板 + 给 TeamLeader 发 result 消息（带白板引用）。
-
-### 2.2 三个表（sessions.db）
+### 2.2 数据库表（sessions.db）
 
 | 表 | 存什么 |
 |---|---|
-| **sessions** | 节点：id, kind(root/team/subagent), name, status, scope_id, metadata |
+| **sessions** | id, kind(root/team/subagent), name, status, scope_id, workdir, metadata |
 | **mailboxes** | agent 间消息：session_id(收件人), from_session_id, kind(dispatch/result/chat), content, whiteboard_ref |
-| **whiteboard** | 共享 artifact：id, scope_id, session_id, kind(自由标签), title, content |
+| **whiteboard** | 共享 artifact：id, scope_id, session_id, kind, title, content |
 
 `checkpoints.db`（LangGraph 管理）= 消息内容层，按 thread_id=session_id 隔离。
 
-**default 是单例**：固定 id="default"，不可删，NewChat=reset（adelete_thread）。
+**Manus 是单例**：固定 id="manus"，不可删，"新启会话"=reset（adelete_thread）。
 
-### 2.3 统一事件协议（event_schema.py）
-
-废弃 AG-UI，自定 SSE 事件，每条带 `session_id` + `message_id` + `speaker`：
+### 2.3 Agent 生命周期（方案 A：不常驻）
 
 ```
-message_start / text_delta / message_end  (文本流式)
+build_agent(session_id)
+  ↓ 从 DB 查 name + workdir
+  ↓ get_checkpointer() → 新 aiosqlite 连接（同一 DB 文件）
+  ↓ create_deep_agent(model, prompt, tools, backend, checkpointer, ...)
+  ↓ 返回 agent 实例
+
+engine._stream(session_id)
+  ↓ build_agent(session_id)
+  ↓ agent.astream() → 流式输出
+  ↓ _final_text(agent, config) → 提取结果
+  ↓ close_agent(agent) → 关闭 checkpointer 连接
+  ↓ 启动 pending dispatch / 检查 inbox
+```
+
+- agent 实例不跨请求、不跨 session、不泄漏
+- cd 只改 session.workdir，下次消息自然用新值
+- 修改子 agent 描述 → 下次对话自动生效（热更新）
+
+### 2.4 统一事件协议（event_schema.py）
+
+```
+message_start / text_delta / message_end     (文本流式)
 tool_call_start / tool_call_args / tool_call_result / tool_call_end  (工具)
-step_start / step_end  (节点步骤)
-mailbox  (agent 间消息，实时推入 channel)
+step_start / step_end                         (节点步骤)
+mailbox                                       (agent 间消息)
+thinking_delta                                (推理过程)
 error / done
 ```
 
 流以 `data: [DONE]\n\n` 收尾。
 
-### 2.4 单一 Runner（runner.py）+ Channel（channels.py）
+### 2.5 前端 Store 架构
 
-**SessionRunner.run(agent, session_id, prompt, speaker, mode)** —— 所有 agent 走这一个：
-- `convert_chunk` 带 `_StreamState` 去重（从旧 agui_bridge 提炼，这是修 team 流 bug 的关键：subgraphs=True 多层级产同 token，去重保证只发一次）
-- mode="async" → 后台 task，立即返回；mode="sync" → 阻塞，返回最终文本
-- **流式即最终态**，不再 aget_state 二次读 final_text（旧 team bug 根因）
-
-**ChannelRegistry** —— 单一 registry（替代 SingleRegistry + TeamRegistry）：
-- 每个 session 一个 asyncio.Queue
-- `fan_in(scope_id, focus_session_id)` → 多 channel 透传合流，按到达顺序，不重排
-- 同时是 mailbox 的实时推送通道（hybrid 持久化的 push 半）
-
-**dispatch 统一原语**（runner.dispatch）：创建子 session（scope_id=team_id 或 NULL）→ mailbox 发 dispatch 消息 → runner.run 子 agent → 完成后写白板 + 给父发 result 消息。sync=await 返回文本，async=立即返回 session_id。
-
-### 2.5 双 provider 模型切换
-
-```python
-# config.py
-model_provider: str = "anthropic"  # 或 "openai"
-# agent_factory._build_model 按 provider 切 ChatAnthropic / ChatOpenAI
-# OpenAI 模式注入 verify=ssl_verify 的 httpx client（公司自签证书跳过）
+```
+RootStore (stores/index.js)
+  ├── sessions: SessionStore      — session 列表 + 元数据
+  ├── runtime: AgentRuntime       — agent 消息流（不再碰 workdir）
+  ├── sandbox: SandboxStore       — workdir + cd + 文件 CRUD（独立）
+  ├── agentStore: AgentStore      — agent/skill/tool 配置 CRUD
+  └── skillStore: SkillStore      — skill 列表
 ```
 
 ### 2.6 端口
-- 后端 **8999**，前端 5173，vite proxy → /sessions, /scopes, /workdir, /health → 8999
+- 后端 **8999**，前端 5173，Electron dev 加载 localhost:5173
 
 ---
 
 ## 3. 后端实现现状（backend/src/openmanus/）
 
-| 文件 | 职责                                                                                                         |
-|---|------------------------------------------------------------------------------------------------------------|
-| `main.py` | FastAPI app，lifespan（init_db + ensure_default + build_agents）。挂 streams/sessions/workdir 路由                |
-| `config.py` | Settings（.env）：model_provider/model/key/ssl_verify/workdir/database_url/port=8999                          |
-| `db.py` | sessions 表 CRUD（含 scope_id, list_in_scope）+ init_db（建表 + migration）。删了 message_links                       |
-| `mailbox.py` | **MailboxStore**：agent 间消息（send/inbox/outbox/mark_read）+ 混合持久化（DB + channel pusher 注入）                     |
-| `whiteboard.py` | **WhiteboardStore**：artifact CRUD（create/get/list_in_scope/list_by_author/update/delete）                   |
-| `event_schema.py` | 统一 SSE 事件 schema + frame 编码 + done sentinel                                                                |
-| `channels.py` | **ChannelRegistry**（单例）+ drain_single + fan_in（scope 合流）+ 注册 mailbox pusher                                |
-| `runner.py` | **SessionRunner**（单例）：run（async/sync）+ dispatch + convert_chunk（带去重，修 team 流 bug）                          |
-| `agent_factory.py` | 构 default + TeamLeader。build_agents/get_agent_for_workdir。挂新工具                                             |
-| `store.py` | get_checkpointer：SQLite / Postgres                                                                         |
-| `middleware/tool_guard.py` | **ToolGuardMiddleware**：双层禁工具（default 禁 write/edit/execute/task；TeamLeader 禁 task）                         |
-| `api/streams.py` | POST /sessions/:id/messages（发消息+流式）+ GET /sessions/:id/stream（?scope 合流）+ GET /scopes/:id/stream + /health |
-| `api/sessions.py` | CRUD + GET /:id（assistant-ui 兼容历史压平）+ preview + reset + GET /:id/mailbox + GET /:id/whiteboard             |
-| `tools/mailbox_tools.py` | **dispatch**（统一派发，sync/async）+ dispatch_to_team + send_message + read_mailbox                              |
-| `tools/whiteboard_tools.py` | whiteboard_write + whiteboard_read                                                                         |
-| `tools/roles.py` | ROLES 字典（Researcher/Coder 的 prompt + allowed_tools）                                                        |
+| 文件 | 职责 |
+|---|---|
+| `main.py` | FastAPI app，lifespan（load agents/tools/skills + init_db + ensure_manus）|
+| `config.py` | Settings（.env）：model_provider/model/key/ssl_verify/workdir/port=8999 |
+| `db.py` | sessions 表 CRUD + ensure_manus（固定 id="manus"）|
+| `agent_factory.py` | **build_agent(session_id)** + **close_agent** + **_resolve_prompt**（占位符替换）|
+| `store.py` | get_checkpointer：SQLite / Postgres |
+| `engine.py` | **StreamEngine**：_stream（内部 build+close）/ run / start / _start_turn_with_inbox |
+| `channels.py` | ChannelRegistry + drain_single + fan_in + drain_sessions |
+| `event_schema.py` | 统一 SSE 事件 schema + frame 编码 |
+| `mailbox.py` | MailboxStore：agent 间消息 + wakeup handler |
+| `whiteboard.py` | WhiteboardStore：artifact CRUD |
+| `agent_loader.py` | 从 ~/.openmanus/agents/ 加载（YAML + prompt.md），seed builtin |
+| `tool_loader.py` | 从 ~/.openmanus/tools/ 加载用户定义工具 |
+| `skill_loader.py` | 从 ~/.openmanus/skills/ 加载 SKILL.md |
+| `readonly_backend.py` | ReadOnlyFilesystemBackend（virtual_mode=True）|
+| `chat_model.py` | ChatGLM — 保留 reasoning_content |
+| `api/streams.py` | POST /sessions/:id/messages + cd + GET /stream + /health |
+| `api/sessions.py` | CRUD + messages（临时 build agent 读 checkpointer）+ reset + mailbox + whiteboard |
+| `api/files.py` | 文件 CRUD + watchdog SSE（_FileWatcher 单目录监听）|
+| `api/agents.py` | agent/skill/tool 配置 CRUD（Pydantic models）|
+| `api/skills.py` | skill 列表 + 文件树 |
+| `api/tools.py` | tool 文件浏览 |
+| `tools/mailbox_tools.py` | dispatch（动态注入 agent 列表）+ send_message + read_mailbox |
+| `tools/whiteboard_tools.py` | whiteboard_write + whiteboard_read |
+| `middleware/tool_guard.py` | ToolGuardMiddleware（Manus 禁文件工具）|
+| `middleware/agent_trace.py` | AgentTraceMiddleware |
 
 ---
 
 ## 4. 前端实现现状（frontend/src/）
 
-### 4.1 数据流（mobx view→store→service）
+### 4.1 数据流（mobx）
 
 | 层 | 文件 | 说明 |
 |---|---|---|
-| view | views/Workspace.jsx | react-resizable-panels 布局（SessionList \| ChatPane \| Playground） |
-| view | views/ChatPane.jsx | assistant-ui AssistantRuntimeProvider 包裹 ThreadView + ChatInput；按 scope 切单/team 视图 |
-| view | views/SessionList.jsx | 微信式列表：DEFAULT/TASKS 分组（taskSessions = team + 顶层 subagent） |
-| component | components/chat/ThreadView.jsx | **assistant-ui primitives 组装**（ThreadPrimitive/MessagePrimitive/useMessage），保留深色主题+DiceBear头像+工具折叠 |
-| component | components/chat/ChatInput.jsx | ZCode 风格输入栏（保留，接 messages.send） |
-| store | stores/MessagesStore.js | **核心**：session_id→ThreadMessage[] + 统一事件 reducer + scope 合流（activeMessages computed）+ watchLive |
-| store | stores/SessionStore.js | DEFAULT_ID 单例 + rootSessions/taskSessions + bumpActivity/resetDefault/select |
-| runtime | runtime/assistantRuntime.js | useExternalStoreRuntime 适配（messages/isRunning/onNew/onCancel + convertMessage） |
-| service | services/streamService.js | sendMessage（POST+SSE）+ subscribe（GET EventSource，支持 scope） |
-| service | services/sessionService.js | CRUD + setPreview + resetHistory |
-| hook | hooks/useStore.jsx | mobx rootStore context |
+| view | views/Workspace.jsx | react-resizable-panels 布局（SessionList \| ChatPane \| Playground）|
+| view | views/ChatPane.jsx | 聊天面板，按 scope 切单/team 视图 |
+| view | views/SessionList.jsx | session 列表 |
+| view | views/Playground.jsx | Sandbox 文件树 + 内容编辑器 |
+| view | views/AgentsView.jsx | Agent 配置页面 |
+| component | components/chat/ThreadView.jsx | 消息渲染 |
+| component | components/chat/ChatInput.jsx | 输入栏 + /skill 命令 |
+| component | components/sandbox/ConfirmDialog.jsx | Radix Dialog 确认弹窗 |
+| component | components/ui/dialog.jsx | Radix Dialog 封装 |
+| store | stores/SandboxStore.js | workdir + cd + 文件 CRUD |
+| store | stores/AgentRuntime.js | agent 消息流（不再碰 workdir）|
+| store | stores/SessionStore.js | session 列表管理 |
+| runtime | runtime/eventReducer.js | 纯函数事件 reducer（14 个单元测试）|
+| runtime | runtime/messageStore.js | mobx observable messagesBySession |
+| runtime | runtime/streamClient.js | SSE EventSource 管理 |
 
-### 4.2 assistant-ui 集成要点
-- **v0.14 是 headless**：没有 `<Thread/>` 组件，只有 primitives（ThreadPrimitive/MessagePrimitive/ComposerPrimitive）。ThreadView.jsx 用 primitives 自己组装
-- 用 `useExternalStoreRuntime` 把 MessagesStore 适配成 runtime
-- 消息渲染从 `useMessage()` 读 content 数组自己渲染（绕开 MessagePartRuntime context 问题）
-- speaker 从 `metadata.custom.speaker` 取，决定 DiceBear 头像 seed
+### 4.2 Sandbox 文件浏览器
+- 懒加载目录树（第一层折叠，点击展开动态加载）
+- watchdog SSE 实时刷新（局部刷新，只更新变更文件的父目录）
+- workdir 跟随 session 切换
+- 右键菜单（原生 onContextMenu + createPortal）+ Radix Dialog 确认
+- cd 命令（独立端点，支持相对路径 + cd .. 回退）
 
-### 4.3 头像系统（保留）
-DiceBear adventurer，HTTP API 零依赖。Manus 专属 seed="manus-open"。subagent 用 session.id 做 seed。
-
-### 4.4 设计系统（保留）
-深色"quiet dark cinematic"，token 在 index.css `@theme`（Tailwind v4）。role-*(TeamLeader绿/Researcher蓝/Coder橙)。
+### 4.3 Electron 桌面客户端
+- frameless window（`frame: false`）
+- IPC 窗口控制（minimize/maximize/close）
+- dev 模式加载 localhost:5173（openDevTools 暂时注释）
 
 ---
 
-## 5. 关键实现决策（防遗忘）
+## 5. ~/.openmanus/ 目录结构
 
-1. **mobx 渲染**：immutable index replacement（this.items[i] = {...cur}）
-2. **default 单例**：id 固定，NewChat=reset
-3. **派活自动切换**：MessagesStore._endTurn 后 _afterDelegation（列表 diff 找新增 session）
-4. **team 流 bug 根除**：单一 convert_chunk 带 _StreamState 去重 + 流式即最终态（不再 aget_state 二次读）
-5. **mailbox 混合持久化**：每条消息既写 DB 又推 channel（channel pusher 由 channels 模块注入 mailbox）
-6. **scope_id 表空间归属**：team 内子 agent scope_id=team_id；顶层单派活 scope_id=NULL。taskSessions = team + (subagent 且 scope_id 为空)
-7. **dispatch sync/async 统一**：底层一个 runner.run，sync=await 返回文本，async=fire-and-forget
+```
+~/.openmanus/
+  agents/           — 每个 agent 一个目录
+    Manus/
+      agent.yaml    — name, description, tools, skills, strip_file_tools
+      prompt.md     — 系统提示词（支持 {{AGENTS}} 占位符）
+    TeamLeader/
+    Coder/
+    Researcher/
+  tools/            — 用户定义工具
+    tool.yaml + entry.py
+  skills/           — SKILL.md 文件包
+    SKILL.md + scripts/ + references/ + assets/
+```
 
 ---
 
@@ -191,44 +328,27 @@ DiceBear adventurer，HTTP API 零依赖。Manus 专属 seed="manus-open"。suba
 - 手动：`cd backend && uv run uvicorn openmanus.main:app --port 8999` + `cd frontend && yarn dev`
 
 ### 模型配置（backend/.env）
-Mode A（OpenAI 兼容，公司内网）: MODEL_PROVIDER=openai + 公司 key/url + SSL_VERIFY=false
-Mode B（Anthropic/GLM）: MODEL_PROVIDER=anthropic + MODEL=GLM-5.2 + ANTHROPIC_BASE_URL
+- Mode A（OpenAI 兼容，公司内网）: `MODEL_PROVIDER=openai` + 公司 key/url + `SSL_VERIFY=false`
+- Mode B（Anthropic/GLM）: `MODEL_PROVIDER=anthropic` + `MODEL=GLM-5.2` + `ANTHROPIC_BASE_URL`
 
-### 关键端点
-- health: GET /health
-- 发消息: POST /sessions/:id/messages（body {content}，返回 SSE）
-- 看流: GET /sessions/:id/stream（?scope=team_id 合流）
-- team 流: GET /scopes/:id/stream
-- CRUD: /sessions（GET 支持 kind/scope_id/top_level 过滤）
+### seed 机制
+- 首次运行时 `seed_builtin()` 把 `backend/seed/agents/` 复制到 `~/.openmanus/agents/`
+- 之后不再覆盖（用户自定义的 prompt 不被破坏）
+- 更新内置 agent prompt 需手动替换 `~/.openmanus/agents/Manus/prompt.md`
 
 ---
 
-## 7. Git 状态
+## 7. 待办事项
 
-- 当前分支：`refactor/unified-session-architecture`（统一架构重构）
-- 旧分支 main 仍是重构前状态
-- .env 在 .gitignore（API key 不泄露）
-- **重构未推送**（github 网络不稳，需验证充分后合并 main 再推）
+### 功能
+- [ ] TeamLeader 偶发轮询 `read_mailbox` — prompt 约束强化
+- [ ] 消息自动滚动偶尔失效
+- [ ] SubAgent 配置 Tab（agent.yaml `sub_agents` 字段）
+- [ ] Human-in-loop / Interrupt Tab
+- [ ] 聊天面板折叠/展开
+- [ ] Tool/Skill 创建/安装顶层页面
+- [ ] 后端 sandbox 配置（Embedded python312 + sandbox backend）
 
----
-
-## 8. 已知问题 / 后续
-
-### 重构后已验证（2026-07-01）
-- ✅ 后端启动（lifespan + migration + build_agents）
-- ✅ 单 agent 流式（POST /sessions/default/messages，事件 schema 正确）
-- ✅ dispatch 派活（default → Researcher async，子 session 创建，scope_id 正确）
-- ✅ 历史回看（get_session 扁平化为 assistant-ui 格式）
-- ✅ 前端渲染（assistant-ui ThreadView + 流式回复 + 工具调用 + 历史消息）
-- ✅ vite proxy（health/sessions/scopes）
-
-### 待验证 / 后续
-- ⚠️ **team 完整链路**：default → dispatch_to_team → TeamLeader → dispatch(子) → scope fan-in 合流，需真实跑一次完整 team 任务验证
-- ⚠️ **mailbox/白板 UI**：后端有 GET /:id/mailbox + /:id/whiteboard，前端还没接（任务看板视图未做）
-- ⚠️ **assistant-ui 视觉细节**：ThreadView 基本能用，但工具调用折叠/角色色等细节可能需调
-- ⚠️ **ChatInput 的 ⚙️/@/📎 占位**：未接功能
-- ⚠️ 公司环境实测（模型连接、SSL、team 完整链路）
-
-### 待清理（重构副产物）
-- backend/data/ 下的旧 message_links 表数据（migration 会 DROP，但 data/sessions.db 历史数据可能残留）
-- 旧测试产物（bfs/dfs/workspace/Z 等，已在 .gitignore）
+### 已知问题
+- `execute()` shell 命令不受 virtual_mode 限制（deepagents 设计，需 Docker/VM 后端做真正隔离）
+- seed 只首次复制，更新内置 agent prompt 需手动操作
