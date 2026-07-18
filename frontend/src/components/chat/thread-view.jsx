@@ -8,7 +8,7 @@ import {
     Wrench,
 } from "lucide-react";
 
-import { Avatar } from "@/components/Avatar";
+import { Avatar } from "@/components/avatar";
 
 /**
  * ThreadView — a PURE presentational chat surface (no assistant-ui runtime).
@@ -22,7 +22,7 @@ import { Avatar } from "@/components/Avatar";
  *   { id, role:'user'|'assistant', speaker, thinking?, content: Part[], status }
  *   Part: { type:'text', text } | { type:'tool-call', toolCallId, toolName, args, result, _streaming }
  *
- * @param {{ messages: import("@/runtime/eventReducer").Message[], session?: object }} props
+ * @param {{ messages: import("@/runtime/event-reducer").Message[], session?: object }} props
  */
 export const ThreadView = observer(function ThreadView({
     messages = [],

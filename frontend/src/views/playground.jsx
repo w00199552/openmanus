@@ -23,9 +23,9 @@ import MDEditor from "@uiw/react-md-editor";
 import { Highlight, themes } from "prism-react-renderer";
 import { Group, Panel, Separator } from "react-resizable-panels";
 
-import { useStore } from "@/hooks/useStore";
+import { useStore } from "@/hooks/use-store";
 import { cn, joinAbsPath, copyText } from "@/lib/utils";
-import { ConfirmDialog } from "@/components/sandbox/ConfirmDialog";
+import { ConfirmDialog } from "@/components/sandbox/confirm-dialog";
 import {
     Popover,
     PopoverContent,

@@ -1,8 +1,8 @@
-import { SessionStore } from "./SessionStore";
-import { AgentStore } from "./AgentStore";
-import { SkillStore } from "./SkillStore";
-import { SandboxStore } from "./SandboxStore";
-import { AgentRuntime } from "@/runtime/agentRuntime";
+import { SessionStore } from "./session-store";
+import { AgentStore } from "./agent-store";
+import { SkillStore } from "./skill-store";
+import { SandboxStore } from "./sandbox-store";
+import { AgentRuntime } from "@/runtime/agent-runtime";
 
 export class RootStore {
     sessions;

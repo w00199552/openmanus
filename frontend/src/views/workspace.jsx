@@ -1,13 +1,13 @@
 import { observer } from "mobx-react-lite";
 import { useEffect, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
-import { TopNav } from "@/components/TopNav";
-import { SessionList } from "@/views/SessionList";
-import { ChatPane } from "@/views/ChatPane";
-import { Playground } from "@/views/Playground";
-import { AgentsView } from "@/views/AgentsView";
-import { SkillsView } from "@/views/SkillsView";
-import { ToolsView } from "@/views/ToolsView";
+import { TopNav } from "@/components/top-nav";
+import { SessionList } from "@/views/session-list";
+import { ChatPane } from "@/views/chat-pane";
+import { Playground } from "@/views/playground";
+import { AgentsView } from "@/views/agents-view";
+import { SkillsView } from "@/views/skills-view";
+import { ToolsView } from "@/views/tools-view";
 
 // localStorage keys for persisted panel layouts (survive session switches).
 const LAYOUT_LEFT = "openmanus.layout.left"; // list | chat  (inside left half)

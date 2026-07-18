@@ -2,9 +2,9 @@ import { observer } from "mobx-react-lite";
 import { useEffect, useState } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 
-import { useStore } from "@/hooks/useStore";
-import { ThreadView } from "@/components/chat/ThreadView";
-import { ChatInput } from "@/components/chat/ChatInput";
+import { useStore } from "@/hooks/use-store";
+import { ThreadView } from "@/components/chat/thread-view";
+import { ChatInput } from "@/components/chat/chat-input";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 /**

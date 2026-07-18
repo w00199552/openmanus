@@ -1,6 +1,6 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
-import { listSkills } from "@/services/agentService";
+import { listSkills } from "@/services/agent-service";
 
 /**
  * SkillStore — manages skill list from ~/.openmanus/skills/.

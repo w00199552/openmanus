@@ -14,8 +14,8 @@ import {
 } from "lucide-react";
 import MDEditor from "@uiw/react-md-editor";
 
-import { useStore } from "@/hooks/useStore";
-import { Avatar } from "@/components/Avatar";
+import { useStore } from "@/hooks/use-store";
+import { Avatar } from "@/components/avatar";
 import { cn } from "@/lib/utils";
 
 /**

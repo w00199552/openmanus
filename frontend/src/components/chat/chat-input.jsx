@@ -16,7 +16,7 @@ import {
     TooltipTrigger,
     TooltipContent,
 } from "@/components/ui/tooltip";
-import { listSkills } from "@/services/agentService";
+import { listSkills } from "@/services/agent-service";
 
 const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
 

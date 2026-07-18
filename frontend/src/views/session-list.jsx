@@ -2,8 +2,8 @@ import { observer } from "mobx-react-lite";
 import { useEffect, useState } from "react";
 import { Search, Trash2 } from "lucide-react";
 
-import { useStore } from "@/hooks/useStore";
-import { SessionAvatar } from "@/components/Avatar";
+import { useStore } from "@/hooks/use-store";
+import { SessionAvatar } from "@/components/avatar";
 import { formatListTime } from "@/utils/time";
 import { cn } from "@/lib/utils";
 

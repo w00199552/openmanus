@@ -15,12 +15,12 @@ import {
 import MDEditor from "@uiw/react-md-editor";
 import { Highlight, themes } from "prism-react-renderer";
 
-import { useStore } from "@/hooks/useStore";
+import { useStore } from "@/hooks/use-store";
 import {
     listSkills,
     getSkillTree,
     getSkillFile,
-} from "@/services/agentService";
+} from "@/services/agent-service";
 import { cn } from "@/lib/utils";
 
 const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";

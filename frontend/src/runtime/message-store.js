@@ -10,15 +10,15 @@
  * storage means a future change to how messages are held (pagination, virtual
  * lists, eviction of old sessions) touches ONLY this file.
  *
- * @module runtime/messageStore
+ * @module runtim./message-store
  */
 
 import { makeAutoObservable } from "mobx";
 
-import { reduceEvent } from "./eventReducer.js";
+import { reduceEvent } from "./event-reducer.js";
 
 export class MessageStore {
-    /** @type {Record<string, import('./eventReducer').Message[]>} session_id → messages */
+    /** @type {Record<string, import('./event-reducer').Message[]>} session_id → messages */
     messagesBySession = {};
     /** @type {Record<string, boolean>} session_id → history-loaded flag */
     loadedBySession = {};

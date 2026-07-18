@@ -5,7 +5,7 @@ import {
     listAgents,
     listSkills,
     listTools,
-} from "@/services/agentService";
+} from "@/services/agent-service";
 
 const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
 

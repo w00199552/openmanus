@@ -15,7 +15,7 @@
  * through these pure builders guarantees a new reference per delta, which
  * every reactive layer observes correctly.
  *
- * @module runtime/eventReducer
+ * @module runtim./event-reducer
  */
 
 // ─── types (JSDoc) ─────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 /**
  * eventReducer unit tests — pure-function checks, no React/mobx/network.
  *
- * Run with: `node --test src/runtime/eventReducer.test.js` (Node 18+ test runner)
+ * Run with: `node --test src/runtim./event-reducer.test.js` (Node 18+ test runner)
  * or any runner that understands `node:test` + `node:assert`.
  *
  * These tests lock down the streaming contract: every event produces a fresh
@@ -12,7 +12,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { ensureMessage, reduceEvent, replaceMessage } from "./eventReducer.js";
+import { ensureMessage, reduceEvent, replaceMessage } from "./event-reducer.js";
 
 /** helper: text length of the last message's concatenated text parts */
 function lastText(messages) {

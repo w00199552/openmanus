@@ -1,6 +1,6 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
-import * as sessionApi from "@/services/sessionService";
+import * as sessionApi from "@/services/session-service";
 
 const LS_KEY = "openmanus.activeSessionId";
 

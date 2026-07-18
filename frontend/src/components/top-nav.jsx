@@ -1,7 +1,7 @@
 import { Settings, LogIn, Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { WindowControls } from "@/components/WindowControls";
+import { WindowControls } from "@/components/window-controls";
 
 // Nav items with "active" = implemented (clickable).
 const NAV_ITEMS = [
