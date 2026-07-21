@@ -146,7 +146,7 @@ AgentRuntime 瘦身：删除 workdir 字段 + _cd 方法，cd 委托给 SandboxS
 - 桌面：**Electron**（frameless window）
 - 模型：双 provider（Anthropic 协议 / OpenAI 兼容）
 - 数据流：view → store (mobx) → service → backend（严格单向）
-- 仓库目录：`deepagents-opencode/`（含 backend/、frontend/、electron/）
+- 仓库目录：`OpenManus/`（含 backend/、frontend/、electron/）
 
 ### 核心特性
 - **可配置的插件化多 Agent 平台**：Agent 是文件（YAML + prompt.md），Tool 是用户定义的 Python 文件，Skill 是 SKILL.md 文件包

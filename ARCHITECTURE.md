@@ -87,7 +87,7 @@
 ## 3. 目录结构（Directory Structure）
 
 ```
-D:/deepagents-opencode/
+D:/OpenManus/
 ├── ARCHITECTURE.md                    # 本文档（架构说明）
 ├── README.md                          # 项目总说明（deepmanus）
 ├── restart.bat                        # Windows 启动脚本（杀旧进程 + 起 backend/frontend）

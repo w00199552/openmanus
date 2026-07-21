@@ -1,7 +1,7 @@
 # OpenManus · 三层方案与演进路线
 
 > 最后更新:2026-07-21
-> 仓库:`deepagents-opencode`(代码仓后续将更名为 `OpenManus`,本文档统一使用 **OpenManus** 这个名字)
+> 仓库:`OpenManus`(GitHub:`w00199552/openmanus`,本地目录:`D:\OpenManus`)
 > 本文是 OpenManus 的**长期蓝图**。所有阶段性工作(任务清单、优先级、里程碑)以本文为准。
 > 当前架构细节见 [`ARCHITECTURE.md`](./ARCHITECTURE.md);项目进展记忆见 [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)。
 

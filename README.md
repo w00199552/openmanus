@@ -125,7 +125,7 @@ event to `ChatStore`, which mobx-react observes.
 ## Project layout
 
 ```
-deepagents-opencode/
+OpenManus/
 ├── backend/      # Python: FastAPI + deepagents + AG-UI endpoint
 └── frontend/     # JS/JSX: vite + react + mobx + tailwind + shadcn (direct AG-UI SSE)
 ```
