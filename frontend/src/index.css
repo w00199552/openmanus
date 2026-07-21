@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Enable Tailwind v4 `dark:` variant on a class-based strategy. The toggle
+   adds/removes `.dark` on <html> (see use-theme.js). Without this, v4 defaults
+   to prefers-color-scheme and `dark:` utilities wouldn't follow user choice. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ── Fonts: Satoshi (body) + ClashDisplay (display) + JetBrains Mono (code) ──
    Satoshi & ClashDisplay are self-hosted (Fontshare, free license) so the
    Electron desktop build works fully offline. JetBrains Mono stays via
@@ -94,13 +99,75 @@
  */
 
 @layer base {
+    /*
+     * Light theme (default) — measured from devrajchatribin.com light mode.
+     * Cool-tinted off-white surfaces, near-black text, and a DEEP green
+     * accent (#30af5b) instead of the dark-mode lime — lime lacks contrast
+     * on white, so we darken it. Same hairline-border / surface-layer
+     * philosophy as dark, just inverted in lightness.
+     */
     :root {
+        /* ── Surface (cool off-white, layered) ─────────────────────────── */
+        --background: 240 20% 99%; /* #f7f8fa — page: faint cool white */
+        --foreground: 240 6% 10%; /* #18181b — near-black primary text */
+        --card: 0 0% 100%; /* #ffffff — cards on the page */
+        --card-foreground: 240 6% 10%;
+        --sidebar: 240 20% 96%; /* #ececee — raised rails */
+        --sidebar-foreground: 240 6% 12%;
+        --popover: 0 0% 100%; /* #ffffff — menus, popovers */
+        --popover-foreground: 240 6% 10%;
+
+        /* ── Text ──────────────────────────────────────────────────────── */
+        --muted: 240 5% 96%; /* quiet surface */
+        --muted-foreground: 240 5% 45%; /* #71717a — quiet labels (zinc-500) */
+
+        /* ── ⭐ Accent: deep green (light-mode signature) ──────────────── */
+        /* On white, the dark-mode lime (#b5ff6d) fails contrast. The fix is a
+           deeper green — same hue family, but readable. Matches devraj. */
+        --accent: 142 57% 44%; /* #30af5b — deep green */
+        --accent-foreground: 0 0% 100%; /* white text on green */
+
+        /* shadcn parity */
+        --primary: 240 6% 10%; /* near-black for primary buttons */
+        --primary-foreground: 0 0% 100%;
+        --secondary: 240 5% 96%;
+        --secondary-foreground: 240 6% 10%;
+
+        /* ── Semantic colors ──────────────────────────────────────────── */
+        --success: 142 57% 38%; /* deeper green for light bg */
+        --success-foreground: 0 0% 100%;
+        --warning: 38 80% 40%; /* deeper amber for light bg */
+        --warning-foreground: 0 0% 100%;
+        --info: 199 70% 42%; /* deeper sky for light bg */
+        --info-foreground: 0 0% 100%;
+        --destructive: 0 70% 48%; /* red — errors */
+        --destructive-foreground: 0 0% 100%;
+
+        /* ── Lines (light hairlines) ──────────────────────────────────── */
+        --border: 240 5% 90%; /* #e4e4e7 — zinc-200 */
+        --input: 240 5% 90%;
+        --ring: 142 57% 44%; /* focus ring follows accent */
+
+        --radius: 0.5rem; /* 8px base */
+
+        /* role colors — slightly deepened for contrast on light */
+        --role-teamleader: 142 57% 42%;
+        --role-researcher: 199 70% 42%;
+        --role-coder: 38 80% 45%;
+        --role-user: 240 6% 40%;
+        --role-system: 0 70% 48%;
+    }
+
+    /*
+     * Dark theme — the original "editorial dark" palette. Applied when
+     * <html> has the `.dark` class (toggled by use-theme.js). All values are
+     * the tuned tokens from the dark-only era; nothing changed, just moved
+     * here from :root.
+     */
+    .dark {
         /* ── Surface (tinted near-black, layered) ──────────────────────── */
-        /* Three tiers create depth: chat (deepest) < rails (mid) < sidebar (top).
-           Background is tinted (not pure #000) to avoid OLED glare and add a
-           subtle cool mood — a signature of "premium dark" palettes. */
         --background: 240 6% 4%; /* #0a0a0c — deepest: chat area focus */
-        --foreground: 230 100% 98%; /* #f6f7ff — cold-blue-white primary text */
+        --foreground: 230 100% 98%; /* #f6f7ff — cold-blue-white text */
         --card: 240 5% 7%; /* #111114 — mid: left rail, cards */
         --card-foreground: 230 100% 98%;
         --sidebar: 240 5% 10%; /* #18181c — top: right playground rail */
@@ -108,40 +175,36 @@
         --popover: 240 5% 9%; /* #161619 — menus, popovers, tooltips */
         --popover-foreground: 230 100% 98%;
 
-        /* ── Text (soft, cold-blue-white — never pure white) ──────────── */
+        /* ── Text ──────────────────────────────────────────────────────── */
         --muted: 240 5% 12%; /* quiet surface */
         --muted-foreground: 240 7% 78%; /* #c0c0cf — quiet labels */
 
-        /* ── ⭐ The single accent: bold lime (signature color) ─────────── */
-        /* A high-saturation acid lime — the visual anchor of the whole app.
-           Used for active states, running indicators, links, key CTAs. */
+        /* ── ⭐ Accent: bold lime (dark-mode signature) ────────────────── */
         --accent: 88 100% 72%; /* #b5ff6d — bold lime */
         --accent-foreground: 240 6% 4%; /* dark text on accent */
 
-        /* kept for shadcn parity, tuned to the palette */
+        /* shadcn parity */
         --primary: 88 100% 72%;
         --primary-foreground: 240 6% 4%;
         --secondary: 240 5% 12%;
         --secondary-foreground: 230 100% 98%;
 
-        /* ── Semantic colors (for success/warning/info states) ────────── */
-        --success: 152 50% 55%; /* green — done/ok */
+        /* ── Semantic colors ──────────────────────────────────────────── */
+        --success: 152 50% 55%;
         --success-foreground: 240 6% 4%;
-        --warning: 38 80% 60%; /* amber — caution */
+        --warning: 38 80% 60%;
         --warning-foreground: 240 6% 4%;
-        --info: 199 70% 65%; /* sky — informational */
+        --info: 199 70% 65%;
         --info-foreground: 240 6% 4%;
-        --destructive: 0 60% 55%; /* red — errors */
+        --destructive: 0 60% 55%;
         --destructive-foreground: 230 100% 98%;
 
-        /* ── Lines (almost invisible hairlines) ───────────────────────── */
+        /* ── Lines ────────────────────────────────────────────────────── */
         --border: 240 7% 14%; /* #232328 — whisper-thin dividers */
         --input: 240 7% 14%;
         --ring: 88 100% 72%; /* focus ring follows accent */
 
-        --radius: 0.5rem; /* 8px base — devraj-style restraint */
-
-        /* semantic role colors (used sparingly, only as small dots/chips) */
+        /* role colors */
         --role-teamleader: 152 50% 55%;
         --role-researcher: 199 70% 65%;
         --role-coder: 38 80% 60%;
@@ -163,9 +226,9 @@
         margin: 0;
         background-color: hsl(var(--background));
         color: hsl(var(--foreground));
-        /* Native controls (select dropdowns, date pickers, scrollbars) render in
-           dark mode, matching the canvas. */
-        color-scheme: dark;
+        /* Native controls (select dropdowns, date pickers, scrollbars) follow
+           the active theme via the .dark class on <html>. */
+        color-scheme: light dark;
         /* Satoshi for UI chrome (display headings opt-in via .font-display) */
         font-family: "Satoshi", ui-sans-serif, system-ui, -apple-system,
             sans-serif;
@@ -187,13 +250,13 @@
 }
 
 /* Placeholder color — outside @layer base so it has higher priority than
-   Tailwind's generated placeholder utilities. Uses a fixed color (not a CSS
-   variable) so it works in Electron where var() chains sometimes break. */
+   Tailwind's generated placeholder utilities. Uses the muted-foreground token
+   so it follows the active theme. */
 ::placeholder,
 textarea::placeholder,
 input::placeholder {
-    color: #8a8a96 !important;
-    opacity: 0.7 !important;
+    color: hsl(var(--muted-foreground)) !important;
+    opacity: 0.6 !important;
 }
 
 /* Electron: make elements with appRegion:drag actually draggable */

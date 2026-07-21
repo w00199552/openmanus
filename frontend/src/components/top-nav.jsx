@@ -1,6 +1,7 @@
-import { Settings, LogIn } from "lucide-react";
+import { Settings, LogIn, Sun, Moon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/hooks/use-theme";
 import { WindowControls } from "@/components/window-controls";
 
 // Nav items with "active" = implemented (clickable).
@@ -31,6 +32,8 @@ export function TopNav({ activeView = "chat", onNavigate }) {
             window.electron.window.maximizeToggle();
         }
     };
+
+    const { isDark, toggle } = useTheme();
 
     return (
         <header
@@ -73,6 +76,19 @@ export function TopNav({ activeView = "chat", onNavigate }) {
                 style={{ appRegion: "no-drag" }}
                 className="ml-auto flex items-center gap-2"
             >
+                <button
+                    onClick={toggle}
+                    className="rounded-md p-2 text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground"
+                    title={isDark ? "Switch to light" : "Switch to dark"}
+                    aria-label="Toggle theme"
+                >
+                    {/* Sun shows in dark mode (click → light); Moon in light. */}
+                    {isDark ? (
+                        <Sun className="size-4" />
+                    ) : (
+                        <Moon className="size-4" />
+                    )}
+                </button>
                 <button
                     className="rounded-md p-2 text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground"
                     title="Settings"
