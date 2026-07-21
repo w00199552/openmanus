@@ -146,16 +146,22 @@ def score_constraints(
         notes.append(f"⚠️ touched unrelated files: {', '.join(unrelated)}")
         deductions.append(REFORMAT_PENALTY * len(unrelated))
 
-    # 4. Ran lint/typecheck?
-    ran_lint = any(
-        t.name == "execute" and re.search(r"\b(lint|typecheck|ruff|eslint|mypy|tsc)\b", t.args)
-        for t in run.tool_calls
-    )
-    if ran_lint:
-        notes.append("ran a lint/typecheck command (good)")
+    # 4. Ran lint/typecheck?  — only checked when the project HAS a lint config.
+    # A bare fixture with no pyproject.toml/ruff.toml/.eslintrc has nothing to
+    # lint against; penalizing "didn't run lint" there is noise, not signal.
+    has_lint_config = _has_lint_config(workdir)
+    if has_lint_config:
+        ran_lint = any(
+            t.name == "execute" and re.search(r"\b(lint|typecheck|ruff|eslint|mypy|tsc)\b", t.args)
+            for t in run.tool_calls
+        )
+        if ran_lint:
+            notes.append("ran a lint/typecheck command (good)")
+        else:
+            notes.append("(didn't run lint/typecheck — mild)")
+            deductions.append(NO_LINT_PENALTY)
     else:
-        notes.append("(didn't run lint/typecheck — mild)")
-        deductions.append(NO_LINT_PENALTY)
+        notes.append("no lint config in project — lint check skipped")
 
     result.constraint_notes = notes
     result.constraint_score = max(0.0, 1.0 - sum(deductions))
@@ -218,9 +224,43 @@ def _unrelated_changes(workdir: Path, task_name: str) -> list[str]:
             cwd=str(workdir), capture_output=True, text=True, timeout=5,
         )
         changed = set(out.stdout.split()) | set(out2.stdout.split())
+        # Coder writing its own tests is GOOD (matches "verify with tests" in
+        # the prompt) — never penalize test files as "unrelated".
+        changed = {f for f in changed if not _is_test_file(f)}
         return sorted(changed - allowed)
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return []
+
+
+def _is_test_file(path: str) -> bool:
+    """True for conventional test-file names across languages."""
+    import os
+    name = os.path.basename(path).lower()
+    return (
+        name.startswith("test_")
+        or name.endswith("_test.py")
+        or name.endswith("_test.go")
+        or name.endswith(".test.js")
+        or name.endswith(".test.ts")
+        or name.endswith(".spec.js")
+        or name.endswith(".spec.ts")
+    )
+
+
+# Files whose presence means "this project has a real lint/typecheck setup",
+# so it's fair to expect Coder to run the linter.
+_LINT_CONFIG_FILES = {
+    "pyproject.toml", "ruff.toml", ".ruff.toml", "setup.cfg",  # Python
+    ".eslintrc", ".eslintrc.js", ".eslintrc.json", ".eslintrc.yml",
+    "eslint.config.js", "eslint.config.mjs",  # JS/TS
+    "tsconfig.json",  # TS typecheck
+    ".golangci.yml", ".golangci.yaml",  # Go
+}
+
+
+def _has_lint_config(workdir: Path) -> bool:
+    """True if the workdir contains a known lint/typecheck config file."""
+    return any((workdir / name).exists() for name in _LINT_CONFIG_FILES)
 
 
 # ─── Report ─────────────────────────────────────────────────────────────────

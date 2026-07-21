@@ -74,6 +74,11 @@ def prepare_workdir(task_name: str) -> Path:
     if starter.exists():
         shutil.copytree(starter, workdir, dirs_exist_ok=True)
 
+    # Write a .gitignore so Python's __pycache__/.pyc (created when Coder runs
+    # `python foo.py` to verify) isn't counted as "unrelated files Coder added".
+    # Without this, every task that runs Python gets a false-positive penalty.
+    (workdir / ".gitignore").write_text("__pycache__/\n*.pyc\n", encoding="utf-8")
+
     # git-init so run_eval can diff "what Coder changed". If git isn't
     # available or fails, we silently skip diff-based scoring — it's a
     # secondary signal, not the primary one.
