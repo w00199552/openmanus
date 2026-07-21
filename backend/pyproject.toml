@@ -29,3 +29,17 @@ package = true
 
 [tool.uv.build-backend]
 module-name = "openmanus"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# auto: async test functions are run via pytest-asyncio without per-test markers.
+asyncio_mode = "auto"
+# Tighten: stop on first failure is too aggressive for a small suite; keep defaults.
+# Show short tracebacks, local variables, and test summary.
+addopts = "-ra --tb=short"
