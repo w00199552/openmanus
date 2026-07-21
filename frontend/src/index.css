@@ -177,7 +177,11 @@
 
         /* ── Text ──────────────────────────────────────────────────────── */
         --muted: 240 5% 12%; /* quiet surface */
-        --muted-foreground: 240 7% 78%; /* #c0c0cf — quiet labels */
+        /* Lifted from 78% → 85% so muted labels stay crisp on dark (low
+           contrast made text read as "rough/blurry" next to the bright
+           foreground used on hover). Still clearly quieter than foreground
+           (98%) so the hierarchy holds. */
+        --muted-foreground: 240 8% 85%; /* #d6d6de — quiet but crisp */
 
         /* ── ⭐ Accent: bold lime (dark-mode signature) ────────────────── */
         --accent: 88 100% 72%; /* #b5ff6d — bold lime */
