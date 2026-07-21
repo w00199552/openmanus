@@ -1,12 +1,48 @@
 # OpenManus 项目记忆文档
 
-> 最后更新：2026-07-18
-> 仓库：https://github.com/w00199552/deepmanus.git (main 分支)
+> 最后更新：2026-07-21
+> 仓库：https://github.com/w00199552/openmanus (main 分支,GitHub 项目已由 deepmanus 改名为 openmanus)
+> 本地目录:`D:\deepagents-opencode`(待重命名为 `D:\OpenManus`,因 shell 占用暂缓)
 > 这份文档是项目的"长期记忆"。每次会话开始时优先读它恢复上下文。
+> 长期蓝图见 [ROADMAP.md](./ROADMAP.md);架构详解见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ---
 
-## 0. 最新进展（2026-07-14 ~ 07-18）
+## 0. 最新进展（2026-07-21)
+
+### 文档体系重构 + 三层蓝图定稿
+
+本次会话完成了**项目方向对齐**与**文档体系全面更新**:
+
+1. **三层规划定稿**(详见 [ROADMAP.md](./ROADMAP.md)):
+   - **L1 基础编码平台**(当前)—— 对标 opencode,保留 server 化 / 多 agent / skills / mailbox 差异化优势
+   - **L2 知识管理 + skill 自学习进化** —— 对标 Hermes,llmwiki + book2skill/ctx2skill
+   - **L3 Loop Engine 循环工程** —— 对标 multica + 业界 loop engineering
+   - **重要纠正**:Manus 保持**纯路由**,不背 loop 编排职责(loop 入口三候选:升级 TeamLeader / 新建 loop agent / `/loop` 命令,留到 L3 决策)
+   - 业界坐标已查证:Hermes(Nous)、multica-ai、LangChain loop engineering、Claude Code loop engineering
+
+2. **文档全面重构**(本次提交):
+   - 新增 `ROADMAP.md` —— 三层方案 + 演进路线(长期蓝图)
+   - 重写 `README.md` —— 删除 CopilotKit 时代残留(AG-UI bridge 节),对齐当前自定义 SSE 协议 + 四 agent 架构 + 双 provider 配置
+   - 重构 `ARCHITECTURE.md` —— 整体改写为与当前代码一致(删除 agui_bridge / single_runner / team_runner / message_links / per-workdir 缓存等旧架构描述;补 StreamEngine / channels / mailbox / whiteboard / scope_id / 新端点表)
+   - 本文档头部更新(仓库 URL 改 openmanus、补本次进展)
+
+3. **仓库重命名**:
+   - GitHub:`deepmanus` → `openmanus`(已完成,旧 URL 走重定向)
+   - 本地 git origin 已更新为 `git@github.com:w00199552/openmanus.git`
+   - 本地目录 `deepagents-opencode` → `OpenManus` **暂缓**(shell 占用目录导致 rename 失败,需用户手动改名后重建 venv)
+
+### 关键事实核对(本次重构时确认)
+
+- **端点协议**:`POST /sessions/:id/messages` + `GET /stream?scope=|sessions=`(非 AG-UI)
+- **事件协议**:自定义 speaker-aware SSE(`event_schema.py`),含 `thinking_delta`
+- **Agent 生命周期**:方案 A 不常驻,`build_agent` → `_stream` → `close_agent`
+- **数据表**:`sessions` + `mailboxes` + `whiteboard`(无 `message_links`)
+- **配置**:双 provider(`MODEL_PROVIDER=anthropic|openai`),默认 GLM-5.2 走 Anthropic 协议
+
+---
+
+## 0.1 历史进展（2026-07-14 ~ 07-18）
 
 ### Agent 生命周期重构（方案 A：不常驻，按需创建用完即丢）
 
