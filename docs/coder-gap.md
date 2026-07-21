@@ -4,6 +4,8 @@
 > 范围:L1 阶段,聚焦 **Coder agent 对标 opencode coder**。
 > 上游规划见 [ROADMAP.md](../ROADMAP.md);本文是 ROADMAP §3.3 "重写 Coder prompt" 与相关工具对标任务的细化设计。
 
+> **修订说明(2026-07-21):** 初版基于"框架可能没有"的假设,低估了 deepagents 0.6.11 的能力。实际核对源码(`pip download` 后读 `middleware/filesystem.py`)后发现:`read_file`(offset/limit/多模态)、`edit_file`(replace_all + 先读约束)、`execute`(timeout)、`grep`(output_mode 三档)等能力**框架全部自带**。本文已据此大幅修正:P0 由三项收缩为两项(先读约束作废)、工具对标表重写、待确认事项核对掉 4/6。详见各章节。
+
 ---
 
 ## 0. 背景与关键发现
@@ -43,18 +45,36 @@
 
 opencode coder 内置 11 个工具 + (有 LSP 时)diagnostics + 动态 MCP。deepmanus Coder 依赖 deepagents 自带的文件工具 + `execute`。
 
-| opencode 工具 | deepmanus 等价 | 状态 | 差距说明 |
+> **重要(核对 deepagents 0.6.11 源码后修正):** deepagents 自带的 `ls` / `read_file` / `write_file` / `edit_file` / `glob` / `grep` / `execute` 这 7 个工具**能力远比初版文档评估的强,无需改进,直接用框架内置即可**。详见下方"已具备"行的实际能力。
+
+#### 🟢 已具备 —— 直接用 deepagents 内置,不改进
+
+| opencode 工具 | deepmanus 等价 | 框架实际能力(核对源码 `middleware/filesystem.py`) |
+|---|---|---|
+| **bash** | `execute` | ✅ 有 `timeout` 参数(`ExecuteSchema`,L399-402);✅ 合并 stdout/stderr + exit code;✅ prompt 教模型用绝对路径、避免 `find`/`grep`/`cat`(用专用工具) |
+| **view** | `read_file` | ✅ **有 `offset`/`limit` 分页**(`ReadFileSchema`,L347-354);✅ **支持多模态**(图片/音频/视频/PDF 返回多模态块,L425-430);✅ cat -n 行号格式;✅ prompt 主动教模型分页避免 context 溢出(L416-420) |
+| **edit** | `edit_file` | ✅ string replace(`old_string`/`new_string`);✅ **`replace_all` 处理多次匹配**(`EditFileSchema`,L370-373);✅ **自带"先读再改"强约束**(L437:"This tool will error if you attempt an edit without reading the file first")—— P0-3 提议自造的这个,框架已有 |
+| **write** | `write_file` | ✅ 基础写文件 |
+| **ls / glob / grep** | `ls` / `glob` / `grep` | ✅ grep **`output_mode` 三档**(`files_with_matches`/`content`/`count`,`GrepSchema` L389-392);✅ grep **`glob` 参数过滤文件类型**(L388);✅ glob `**`/`*`/`?` 模式 + `path` 基目录(L376-380) |
+
+**额外能力(框架自带,opencode 反而没有):**
+- **大结果驱逐到文件系统** —— 工具结果过大时不简单截断,而是 offload 到 `/large_tool_results/<tool_call_id>`,模型用 `read_file` 分页读或 `grep` 搜(L533-535)。比 opencode 的硬截断聪明。
+- **多模态 read_file** —— 图片/音频/视频/PDF 直接返回多模态内容块。opencode 的 view 明确不支持图片。
+
+#### 🔴 真正缺失(框架没有,需要自己加)
+
+| 缺失工具 | 价值 | 说明 |
+|---|---|---|
+| **patch** | 大段改动省 token(Codex 风格 `*** Begin Patch` + fuzz) | 框架的 `PatchToolCallsMiddleware` 是处理 tool call 参数的,不是应用 diff 的工具,需要自己实现 |
+| **fetch** | URL 抓取(text/markdown/html) | 联网基础能力,自定义 tool |
+| **diagnostics** | LSP 错误反馈,opencode 最有特色的设计 | 自定义实现,被动嵌入 edit/write 响应更佳 |
+| **sourcegraph** | 跨仓代码搜索(低优) | 可选,MCP 接外部 |
+
+#### 🟡 形态不同(需要决策怎么对齐)
+
+| 维度 | opencode | deepmanus | 决策 |
 |---|---|---|---|
-| **bash** | `execute` | ⚠️ 基础具备 | 缺:命令黑名单、只读白名单(免审批)、输出截断(30k)、timeout 配置、持久 shell |
-| **view** | `read_file` | ⚠️ 基础具备 | 缺:range(offset/limit)、图片识别拒绝、相似文件名建议、LSP open 通知 |
-| **edit** | `edit_file` | ⚠️ 部分 | 需确认 deepagents 是否支持 string replace + 多次匹配检测;**缺"先读再改"强约束** |
-| **write** | `write_file` | ✅ 具备 | 缺:同名内容去重保护、父目录自动创建 |
-| **ls / glob / grep** | `list_directory`/`ls`/`glob`/`grep` | ✅ 具备 | 缺:ripgrep 加速、gitignore 尊重、结果数量上限 |
-| **patch** | ❌ | 🔴 **缺失** | 大段改动省 token,Codex 风格 + fuzz 机制 |
-| **fetch** | ❌ | 🔴 **缺失** | URL 抓取(text/markdown/html) |
-| **diagnostics** | ❌ | 🔴 **缺失** | LSP 错误反馈,opencode 最有特色的设计 |
-| **agent / subagent** | mailbox dispatch(异步) | 🟡 形态不同 | 缺**同步**只读子 agent(直接进父 context) |
-| **sourcegraph** | ❌ | 🔴 缺失(低优) | 跨仓搜索,优先级低 |
+| **subagent 协作** | 同步阻塞,结果直接进父 context | 异步 dispatch,走 mailbox | 按架构原则(§1):**用户可见 Agent 用 mailbox 异步;Coder 内置子 agent 用 deepagents `SubAgentMiddleware` 同步**。两条路并存。 |
 
 ### 2.2 基础设施 bug
 
@@ -75,14 +95,15 @@ opencode coder 内置 11 个工具 + (有 LSP 时)diagnostics + 动态 MCP。dee
 
 | 机制 | opencode | deepmanus | 差距 | 方案 |
 |---|---|---|---|---|
-| **"先读再改"约束** | ✅ 强制(fileRecords 记录 readTime) | ❌ 无 | 明显差距 | **用框架 `FilesystemPermission` + 自定义校验** |
+| **"先读再改"约束** | ✅ 强制(fileRecords 记录 readTime) | ✅ **框架 `edit_file` 自带**(L437,编辑未读文件会报错) | **无差距** | ~~P0-3 自造~~ → 作废,直接用框架 |
+| **read_file 分页** | ✅ view 的 offset/limit | ✅ **框架 `read_file` 自带**(offset/limit + 多模态) | **无差距** | 用框架 |
+| **execute timeout** | ✅ bash timeout 配置 | ✅ **框架 `execute` 自带**(timeout 参数) | **无差距** | 用框架 |
+| **大输出处理** | ✅ 硬截断(bash 30k、glob/grep 100) | ✅ **框架更优**(驱逐到 `/large_tool_results/`,可分页读) | **框架领先** | 用框架 |
 | **permission 审批** | ✅ (Tool,Action,Session,Path) 四元组 | ❌ 只有硬规则 | 明显差距 | **启用框架 `FilesystemMiddleware` + `HumanInTheLoopMiddleware`** |
 | **LSP 反馈嵌入** | ✅ edit/write 响应自动带 diagnostics | ❌ 无 | 明显差距 | P2,LSP 集成时做 |
 | **auto-compact** | ✅ 95% 触发 summarizer | ❌ 无 | 明显差距 | **启用框架 `SummarizationMiddleware`**(配置即用) |
 | **memory/contextPaths** | ✅ CLAUDE.md 自动注入 | ❌ 无 | 明显差距 | **启用框架 `MemoryMiddleware`** |
 | **subagent(同步只读)** | ✅ `agent` 工具 | ❌ 无 | 形态差距 | **启用框架 `SubAgentMiddleware`** |
-| **文件路径强制** | ✅ 工具层补全为绝对路径 | ⚠️ 靠框架 | 待确认 | 核对 deepagents 行为 |
-| **输出截断** | ✅ bash 30k、glob/grep 100 条 | ⚠️ 靠框架 | 待确认 | 核对 deepagents 行为 |
 | **prompt 厚度** | ✅ ~150 行约束 | ❌ 3 行 | 明显差距 | **P0 重写** |
 
 ---
@@ -101,7 +122,9 @@ opencode coder 内置 11 个工具 + (有 LSP 时)diagnostics + 动态 MCP。dee
 
 ## 5. 实施方案(按优先级)
 
-### 5.1 P0 三项(基础,必须先做)
+### 5.1 P0 两项(基础,必须先做)
+
+> **P0 原为三项,核对 deepagents 源码后收缩为两项**:原 P0-3("先读再改"约束)作废 —— 框架 `edit_file` 已自带该约束(`filesystem.py` L437:"This tool will error if you attempt an edit without reading the file first")。
 
 #### P0-1 · 修复 `allowed_tools` 生效
 
@@ -110,16 +133,15 @@ opencode coder 内置 11 个工具 + (有 LSP 时)diagnostics + 动态 MCP。dee
 **当前问题**:`build_agent` 调 `create_deep_agent` 时,工具来源只有 `tools`(额外工具列表),没有对 deepagents 自带工具做白名单过滤。
 
 **方案**(两步):
-1. **核对 deepagents 自带工具清单** —— 确认 `create_deep_agent` 默认注册哪些工具名(read_file/write_file/edit_file/ls/glob/grep/execute/write_todos/task 等)。
-2. **在 `build_agent` 引入裁剪逻辑** —— 利用框架已有的 `_ToolExclusionMiddleware`(或 `excluded_tools` 参数),把"不在 `allowed_tools` 集合内"的自带工具排除掉。
+1. **核对 deepagents `create_deep_agent` 的工具裁剪参数** —— 从 graph.py 看到 `_apply_excluded_middleware` / `_ToolExclusionMiddleware`,应支持按工具名排除。
+2. **在 `build_agent` 引入裁剪逻辑** —— 读 `cfg["allowed_tools"]`,转成"自带工具全集 − allowed_tools = excluded",通过框架的排除机制生效。
 
 **改动文件**:
-- `backend/src/openmanus/agent_factory.py` —— `build_agent` 读取 `cfg["allowed_tools"]`,转成 `excluded_tools`(差集),传给 `create_deep_agent`。
-- 核对 deepagents `create_deep_agent` 是否支持 `excluded_tools` 参数(从 graph.py 看有 `_apply_excluded_middleware`,应该支持)。
+- `backend/src/openmanus/agent_factory.py` —— `build_agent` 计算并传 `excluded_tools`(或等价参数)给 `create_deep_agent`。
 
 **验证**:Researcher 的 `allowed_tools` 只有只读 5 个,改完后它调 write_file 应被拒;Coder 调 write_file 正常。
 
-**风险**:deepagents 的 `strip_file_tools` 当前是 deepmanus 自己的 `ToolGuardMiddleware` 机制(运行时拦截),改成"构造时排除"可能影响 Manus 的 `_FILE_TOOLS` 硬剥逻辑 —— 需保证 Manus 的 `strip_file_tools=true` 仍工作。建议统一成一套机制(`excluded_tools`),废弃 `ToolGuardMiddleware`。
+**风险**:当前 `strip_file_tools`(Manus 专用)是 deepmanus 自己的 `ToolGuardMiddleware` 机制(运行时拦截),要保证改成"构造时排除"后 Manus 的 `strip_file_tools=true` 仍工作。建议统一成一套机制(`excluded_tools`),废弃 `ToolGuardMiddleware`。
 
 ---
 
@@ -132,9 +154,9 @@ opencode coder 内置 11 个工具 + (有 LSP 时)diagnostics + 动态 MCP。dee
 **方案**:移植 opencode `baseAnthropicCoderPrompt` 的精华,适配点:
 - "用 Agent tool 省 context" → 改成 "简单搜索用内置 task subagent,跨 agent 协作用 dispatch"(体现我们的两类协作机制)
 - "不要 commit" 保留
-- "先 read 再 edit" 强化(配合 P0-3 的强制约束)
 - 路径用全路径 保留
-- 加入 OpenManus 特色:skills 用法、mailbox 协作礼仪
+- **"先 read 再 edit" 不用在 prompt 强调** —— 框架 `edit_file` 已强制
+- 加入 OpenManus 特色:skills 用法、mailbox 协作礼仪、read_file 分页用法(框架 prompt 已教,但可强化)
 
 **改动文件**:
 - `backend/seed/agents/Coder/prompt.md` —— 重写(注意 seed 只首次复制,已部署用户需手动替换 `~/.openmanus/agents/Coder/prompt.md`,这点要在 PROJECT_STATUS 提醒)
@@ -148,28 +170,9 @@ opencode coder 内置 11 个工具 + (有 LSP 时)diagnostics + 动态 MCP。dee
 - Following conventions(先看周围代码再改)
 - Doing tasks(搜索→实现→验证→lint)
 - Code style(不乱加注释/版权头)
-- Tool usage(独立调用合并、先读再改、路径全路径)
+- Tool usage(独立调用合并、路径全路径、大文件用 offset/limit 分页)
 - OpenManus 语境(skill 怎么用、何时 dispatch 给 Researcher、何时用内置 task)
 ```
-
----
-
-#### P0-3 · "先读再改"约束
-
-**目标**:edit_file / write_file 前必须先 read_file,防盲改。
-
-**方案选择**(两个候选,需决策):
-
-| 方案 | 做法 | 取舍 |
-|---|---|---|
-| **A. 用框架 `FilesystemPermission`** | 配置 write 路径为 interrupt 模式 + 在 interrupt handler 里检查"是否 read 过" | 复用框架,但 interrupt 机制偏重(要接 HITL),且"是否 read 过"是状态而非权限,语义不完全匹配 |
-| **B. 自定义轻量中间件**(仿 opencode fileRecords) | 写一个 `ReadBeforeWriteMiddleware`,维护进程级 `{path: read_time}` map,write/edit 前检查 | 简单直接,完全对标 opencode,但要自己写 ~50 行代码 |
-
-**建议 B**(简单、对标精确、框架的 permission 留给真正的权限审批用)。但要先核对 deepagents 的 edit_file 是否自带这个约束(看源码),如果有就白做了。
-
-**改动文件**:
-- `backend/src/openmanus/middleware/read_before_write.py`(新建)—— 仿 opencode,`read_file` 记录、`write_file`/`edit_file` 校验、`modTime` 检测外部改动。
-- `backend/src/openmanus/agent_factory.py` —— 把新中间件加到 Coder/Researcher(Researcher 只读不影响)的 middleware 列表。
 
 ---
 
@@ -252,8 +255,8 @@ P0/P1 改动要确保**不破坏这些优势**(尤其加同步 task subagent 时
 M1 编码质量基线(当前)
   ├─ P0-1 修 allowed_tools 生效          ← 基础设施,最先
   ├─ P0-2 重写 Coder prompt              ← 可与 P0-1 并行
-  ├─ P0-3 先读再改约束                   ← P0-1 之后(依赖工具裁剪稳定)
   └─ 验证:Coder 真实任务质量提升,工具边界正确
+  (原 P0-3 先读约束作废 —— 框架 edit_file 自带)
 
 M2 底座补齐
   ├─ P1-1 fetch 工具
@@ -273,16 +276,19 @@ M3 L1 收口
 
 ## 8. 待确认事项(实施前需核对)
 
-这几项需要看 deepagents 源码或实验确认,会影响方案细节:
+> **核对更新(2026-07-21):** 初版列了 6 项,已通过阅读 deepagents 0.6.11 源码(`/tmp/da_src/deepagents-0.6.11`)核对掉其中 4 项,剩余 2 项待 P0-1 启动时确认。
 
-1. **deepagents `create_deep_agent` 是否支持 `excluded_tools` 参数?** —— 决定 P0-1 的实现方式(参数排除 vs 中间件拦截)。
-2. **deepagents 的 edit_file 是否自带"先读再改"约束?** —— 决定 P0-3 是否白做。
-3. **deepagents 的 read_file 是否支持 offset/limit?** —— 决定要不要自己增强。
-4. **deepagents 的 execute 是否保持 cwd(持久 shell)?** —— 决定要不要自己增强。
-5. **deepagents 的工具输出是否有截断?** —— 决定要不要自己加。
-6. **`SubAgentMiddleware` 与 deepmanus 现有 mailbox dispatch 能否共存?** —— 决定 P1-3 的集成方式。
+**已核对结论(写入设计):**
+- ~~read_file 是否支持 offset/limit?~~ → ✅ **支持**(`ReadFileSchema` L347-354 + 多模态)。
+- ~~edit_file 是否自带"先读再改"约束?~~ → ✅ **自带**(L437,P0-3 作废)。
+- ~~execute 是否有 timeout?~~ → ✅ **有**(`ExecuteSchema` L399-402)。
+- ~~工具输出是否截断?~~ → ✅ **有,且更优**(大结果驱逐到 `/large_tool_results/`)。
 
-这些在 P0-1 启动时优先核对(重建 venv 后看源码)。
+**仍待确认:**
+1. **deepagents `create_deep_agent` 的工具裁剪参数具体怎么传?** —— 决定 P0-1 的实现细节(参数排除 vs 中间件拦截)。从 graph.py 看有 `_apply_excluded_middleware`,需核对调用签名。
+2. **`SubAgentMiddleware` 与 deepmanus 现有 mailbox dispatch 能否共存?** —— 决定 P1-3 的集成方式(中间件顺序、状态字段冲突)。
+
+这些在 P0-1 启动时优先核对。
 
 ---
 
