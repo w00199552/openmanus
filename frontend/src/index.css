@@ -363,12 +363,10 @@ kbd {
        as outlined regions, not stacked boxes. Matches devraj's
        `.rounded-3xl .border .p-6` process cards. */
     .rounded-card {
-        /* A faint surface tint + a brighter-than-hairline outline so the
-           card silhouette stays visible against the dark canvas. Pure
-           transparent bg (devraj style) left the cards "melting" into the
-           background at the audit; this reads as a structured container
-           while still feeling light. */
-        background-color: hsl(var(--sidebar) / 0.18);
+        /* Light: a faint dark tint (foreground) so the card reads against
+           the white page. Dark overrides below use sidebar (a light tint)
+           for the same "lifted container" effect on the dark canvas. */
+        background-color: hsl(var(--foreground) / 0.025);
         border: 1px solid hsl(var(--foreground) / 0.12);
         border-radius: 1.5rem; /* 24px — matches devraj rounded-3xl */
         transition:
@@ -376,6 +374,15 @@ kbd {
             background-color 0.3s ease;
     }
     .rounded-card:hover {
+        border-color: hsl(var(--foreground) / 0.25);
+        background-color: hsl(var(--foreground) / 0.04);
+    }
+    /* Dark mode: invert the tint direction — sidebar (light tint) lifts
+       the card on the dark canvas. */
+    .dark .rounded-card {
+        background-color: hsl(var(--sidebar) / 0.18);
+    }
+    .dark .rounded-card:hover {
         border-color: hsl(var(--foreground) / 0.4);
         background-color: hsl(var(--sidebar) / 0.35);
     }
@@ -415,9 +422,12 @@ kbd {
         justify-content: center;
         border-radius: 9999px;
         border: 1px solid hsl(var(--border));
-        background-color: hsl(var(--sidebar) / 0.5);
+        background-color: hsl(var(--foreground) / 0.04);
         padding: 1rem;
         color: hsl(var(--accent));
+    }
+    .dark .card-icon-badge {
+        background-color: hsl(var(--sidebar) / 0.5);
     }
 
     /* Display headings — ClashDisplay, weight 500, tight leading. */
