@@ -5,6 +5,7 @@ import { Highlight, themes } from "prism-react-renderer";
 import { Check, ClipboardCopy } from "lucide-react";
 
 import { cn, copyText } from "@/lib/utils";
+import { useTheme } from "@/hooks/use-theme";
 
 /**
  * MarkdownText — renders assistant message content as GitHub-flavored markdown.
@@ -175,6 +176,7 @@ export function MarkdownText({ content, className }) {
  */
 function CodeBlock({ language, value }) {
     const [copied, setCopied] = useState(false);
+    const { isDark } = useTheme();
 
     const handleCopy = async () => {
         const ok = await copyText(value);
@@ -209,7 +211,7 @@ function CodeBlock({ language, value }) {
                     )}
                 </button>
             </div>
-            <Highlight theme={themes.vsDark} code={value} language={language}>
+            <Highlight theme={isDark ? themes.vsDark : themes.vsLight} code={value} language={language}>
                 {({ className, style, tokens, getLineProps, getTokenProps }) => (
                     <pre
                         className={cn(

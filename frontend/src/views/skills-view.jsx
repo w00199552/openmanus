@@ -16,6 +16,7 @@ import MDEditor from "@uiw/react-md-editor";
 import { Highlight, themes } from "prism-react-renderer";
 
 import { useStore } from "@/hooks/use-store";
+import { useTheme } from "@/hooks/use-theme";
 import {
     listSkills,
     getSkillTree,
@@ -84,6 +85,8 @@ export const SkillsView = observer(function SkillsView() {
 // ─── Skill detail: file tree + content ──────────────────────────────────────
 
 function SkillDetail({ name, onBack }) {
+    const { isDark } = useTheme();
+    const colorMode = isDark ? "dark" : "light";
     const [tree, setTree] = useState(null);
     const [file, setFile] = useState(null); // {path, content, file_type}
     const [loading, setLoading] = useState(true);
@@ -176,7 +179,7 @@ function SkillDetail({ name, onBack }) {
                             </div>
                             <div
                                 className="min-h-0 flex-1 overflow-auto"
-                                data-color-mode="dark"
+                                data-color-mode={colorMode}
                             >
                                 <FileContent file={file} />
                             </div>
@@ -303,14 +306,16 @@ function FileIcon({ name }) {
 // ─── File content renderer ──────────────────────────────────────────────────
 
 function FileContent({ file }) {
+    const { isDark } = useTheme();
+    const colorMode = isDark ? "dark" : "light";
     if (file.file_type === "markdown") {
         return (
-            <div className="h-full" data-color-mode="dark">
+            <div className="h-full" data-color-mode={colorMode}>
                 <MDEditor
                     value={file.content}
                     height="100%"
                     preview="live"
-                    data-color-mode="dark"
+                    data-color-mode={colorMode}
                     style={{ height: "100%" }}
                 />
             </div>
@@ -337,7 +342,7 @@ function FileContent({ file }) {
 
         return (
             <Highlight
-                theme={themes.vsDark}
+                theme={isDark ? themes.vsDark : themes.vsLight}
                 code={file.content}
                 language={lang}
             >

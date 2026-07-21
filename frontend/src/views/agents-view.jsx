@@ -14,6 +14,7 @@ import {
 import MDEditor from "@uiw/react-md-editor";
 
 import { useStore } from "@/hooks/use-store";
+import { useTheme } from "@/hooks/use-theme";
 import { Avatar } from "@/components/avatar";
 import { FancyButton } from "@/components/ui/fancy-button";
 import { cn } from "@/lib/utils";
@@ -119,6 +120,8 @@ export const AgentsView = observer(function AgentsView() {
 
 const AgentDetail = observer(function AgentDetail({ name, onBack }) {
     const { agentStore: s } = useStore();
+    const { isDark } = useTheme();
+    const colorMode = isDark ? "dark" : "light";
     const [tab, setTab] = useState("prompt");
 
     if (s.loading || !s.current) return <Centered>Loading…</Centered>;
@@ -271,7 +274,7 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
                                     }
                                     height="100%"
                                     preview="live"
-                                    data-color-mode="dark"
+                                    data-color-mode={colorMode}
                                     style={{ height: "100%" }}
                                     readOnly={isBuiltin}
                                 />
@@ -551,6 +554,8 @@ function Badge({ children, color }) {
 
 const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
     const { agentStore: s } = useStore();
+    const { isDark } = useTheme();
+    const colorMode = isDark ? "dark" : "light";
     const [tab, setTab] = useState("info");
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
@@ -718,7 +723,7 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
                                     onChange={(val) => setPrompt(val || "")}
                                     height="100%"
                                     preview="live"
-                                    data-color-mode="dark"
+                                    data-color-mode={colorMode}
                                     style={{ height: "100%" }}
                                 />
                             </div>

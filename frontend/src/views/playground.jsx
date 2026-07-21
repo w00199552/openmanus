@@ -24,6 +24,7 @@ import { Highlight, themes } from "prism-react-renderer";
 import { Group, Panel, Separator } from "react-resizable-panels";
 
 import { useStore } from "@/hooks/use-store";
+import { useTheme } from "@/hooks/use-theme";
 import { cn, joinAbsPath, copyText } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/sandbox/confirm-dialog";
 import { usePlaygroundToolbar } from "@/components/playground/playground-context";
@@ -51,6 +52,8 @@ import {
  */
 export const SandboxTool = observer(function SandboxTool() {
     const { sandbox } = useStore();
+    const { isDark } = useTheme();
+    const colorMode = isDark ? "dark" : "light";
     // DOM ref to the shell's toolbar-right slot — our actions portal there.
     const toolbarRightRef = usePlaygroundToolbar();
     const [tree, setTree] = useState(null);
@@ -429,7 +432,7 @@ export const SandboxTool = observer(function SandboxTool() {
                 <Panel id="sandbox-content" minSize="30%">
                     <div
                         className="h-full overflow-auto"
-                        data-color-mode="dark"
+                        data-color-mode={colorMode}
                     >
                         {file ? (
                             <FileEditor
@@ -794,15 +797,17 @@ function FileIcon({ name }) {
 // ─── File editor ────────────────────────────────────────────────────────────
 
 function FileEditor({ file, draft, setDraft }) {
+    const { isDark } = useTheme();
+    const colorMode = isDark ? "dark" : "light";
     if (file.file_type === "markdown") {
         return (
-            <div className="h-full" data-color-mode="dark">
+            <div className="h-full" data-color-mode={colorMode}>
                 <MDEditor
                     value={draft}
                     onChange={(v) => setDraft(v || "")}
                     height="100%"
                     preview="live"
-                    data-color-mode="dark"
+                    data-color-mode={colorMode}
                     style={{ height: "100%" }}
                 />
             </div>
@@ -827,7 +832,7 @@ function FileEditor({ file, draft, setDraft }) {
         };
         const lang = langMap[ext] || "text";
         return (
-            <Highlight theme={themes.vsDark} code={draft} language={lang}>
+            <Highlight theme={isDark ? themes.vsDark : themes.vsLight} code={draft} language={lang}>
                 {({
                     className,
                     style,
