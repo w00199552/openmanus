@@ -108,7 +108,7 @@ export function MarkdownText({ content, className }) {
                         }
                         return (
                             <code
-                                className="rounded-md bg-accent/10 px-1.5 py-0.5 font-mono text-[12.5px] text-accent"
+                                className="rounded-md bg-accent/10 px-1.5 py-0.5 font-mono text-[13px] text-accent"
                                 {...props}
                             >
                                 {children}
@@ -216,7 +216,7 @@ function CodeBlock({ language, value }) {
                     <pre
                         className={cn(
                             className,
-                            "m-0 overflow-x-auto p-3 text-[12px] leading-relaxed"
+                            "m-0 overflow-x-auto p-3 text-[13px] leading-relaxed"
                         )}
                         style={{ ...style, background: "transparent" }}
                     >

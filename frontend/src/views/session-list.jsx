@@ -201,7 +201,7 @@ function SessionItem({ session, unread, active, onSelect, onDelete }) {
                         <span className="flex-1 truncate text-[13px] font-medium text-foreground">
                             {session.title || session.id.slice(0, 12)}
                         </span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground/60">
+                        <span className="shrink-0 text-[11px] text-muted-foreground/60">
                             {formatListTime(
                                 session.updated_at || session.created_at
                             )}

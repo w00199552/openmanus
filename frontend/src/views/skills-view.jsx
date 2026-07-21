@@ -356,7 +356,7 @@ function FileContent({ file }) {
                     <pre
                         className={cn(
                             className,
-                            "m-0 p-4 text-[12px] leading-relaxed"
+                            "m-0 p-4 text-[13px] leading-relaxed"
                         )}
                         style={{ ...style, background: "transparent" }}
                     >
@@ -384,7 +384,7 @@ function FileContent({ file }) {
 
     // plain text
     return (
-        <pre className="p-4 text-[12px] leading-relaxed text-muted-foreground/80">
+        <pre className="p-4 text-[13px] leading-relaxed text-muted-foreground/80">
             {file.content}
         </pre>
     );

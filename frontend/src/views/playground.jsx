@@ -724,7 +724,7 @@ function TreeNode({
                     isDir ? toggleDir(node.path) : onSelect(node.path)
                 }
                 className={cn(
-                    "flex w-full items-center gap-1 rounded-md px-2 py-1 text-[13px] transition",
+                    "flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-[13px] transition",
                     !isDir && selectedPath === node.path
                         ? "bg-accent/10 text-accent"
                         : "text-muted-foreground/90 hover:bg-sidebar/40 hover:text-foreground"
@@ -843,7 +843,7 @@ function FileEditor({ file, draft, setDraft }) {
                     <pre
                         className={cn(
                             className,
-                            "m-0 p-4 text-[12px] leading-relaxed"
+                            "m-0 p-4 text-[13px] leading-relaxed"
                         )}
                         style={{ ...style, background: "transparent" }}
                     >
