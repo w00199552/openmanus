@@ -226,15 +226,26 @@
         margin: 0;
         background-color: hsl(var(--background));
         color: hsl(var(--foreground));
-        /* Native controls (select dropdowns, date pickers, scrollbars) follow
-           the active theme via the .dark class on <html>. */
-        color-scheme: light dark;
+        /* color-scheme MUST match the active theme exactly (not "light dark").
+           A compound value makes Chromium pick a compromise rendering path
+           for text subpixel AA and vector icon rasterization, which reads as
+           "rough/blurry". One value per mode keeps the renderer on its
+           dedicated dark/light optimization path. The .dark override below
+           flips it. */
+        color-scheme: light;
         /* Satoshi for UI chrome (display headings opt-in via .font-display) */
         font-family: "Satoshi", ui-sans-serif, system-ui, -apple-system,
             sans-serif;
         font-feature-settings: "ss01";
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Dark mode: switch color-scheme to dark so Chromium uses its dedicated
+       dark rendering path (text subpixel AA, icon rasterization) instead of
+       a "light dark" compromise that looks rough. */
+    .dark body {
+        color-scheme: dark;
     }
 
     /* Headings: default to ClashDisplay for editorial display contrast.
