@@ -246,9 +246,9 @@ function TreeNode({
                             <ChevronRight className="size-3 shrink-0" />
                         )}
                         {isOpen ? (
-                            <FolderOpen className="size-3 shrink-0 text-muted-foreground/60" />
+                            <FolderOpen className="size-3.5 shrink-0 text-muted-foreground/60" />
                         ) : (
-                            <Folder className="size-3 shrink-0 text-muted-foreground/60" />
+                            <Folder className="size-3.5 shrink-0 text-muted-foreground/60" />
                         )}
                     </>
                 ) : (
@@ -279,7 +279,7 @@ function TreeNode({
 function FileIcon({ name }) {
     const ext = name.split(".").pop()?.toLowerCase();
     if (ext === "md")
-        return <FileText className="size-3 shrink-0 text-muted-foreground/60" />;
+        return <FileText className="size-3.5 shrink-0 text-muted-foreground/60" />;
     if (
         [
             "py",
@@ -295,9 +295,9 @@ function FileIcon({ name }) {
         ].includes(ext)
     )
         return (
-            <FileCode className="size-3 shrink-0 text-muted-foreground/50" />
+            <FileCode className="size-3.5 shrink-0 text-muted-foreground/50" />
         );
-    return <File className="size-3 shrink-0 text-muted-foreground/40" />;
+    return <File className="size-3.5 shrink-0 text-muted-foreground/40" />;
 }
 
 // ─── File content renderer ──────────────────────────────────────────────────

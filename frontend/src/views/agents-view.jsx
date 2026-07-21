@@ -491,7 +491,7 @@ function AgentCard({ agent, onClick }) {
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 {agent.tools.length > 0 ? (
                     <>
-                        <Wrench className="size-2.5" />
+                        <Wrench className="size-3" />
                         <span className="truncate">
                             {agent.tools.join(", ")}
                         </span>
@@ -520,7 +520,7 @@ function TabBtn({ active, onClick, icon, children }) {
         <button
             onClick={onClick}
             className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition",
+                "flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] transition",
                 active
                     ? "bg-foreground/8 text-foreground font-medium"
                     : "text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
