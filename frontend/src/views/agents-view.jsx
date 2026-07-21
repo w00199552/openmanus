@@ -471,7 +471,7 @@ function AgentCard({ agent, onClick }) {
                 <Avatar seed={agent.name} size={44} />
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1">
-                        <span className="truncate font-display text-xl font-medium tracking-tight">
+                        <span className="truncate font-display text-base font-medium tracking-tight">
                             {agent.name}
                         </span>
                         {agent.is_builtin && (
