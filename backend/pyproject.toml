@@ -38,6 +38,10 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Exclude the eval harness — it calls the real LLM (slow/costly/non-deterministic)
+# and ships deliberately-broken fixture test files (e.g. fix_bug/starter/test_search.py).
+# Eval runs as a standalone script: `uv run python tests/eval/run_eval.py`.
+norecursedirs = ["tests/eval"]
 # auto: async test functions are run via pytest-asyncio without per-test markers.
 asyncio_mode = "auto"
 # Tighten: stop on first failure is too aggressive for a small suite; keep defaults.

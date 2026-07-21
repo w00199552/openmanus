@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Eval reports (per-run output, not test assets)
+tests/eval/reports/
