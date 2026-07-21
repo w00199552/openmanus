@@ -45,9 +45,11 @@ export const SkillsView = observer(function SkillsView() {
     return (
         <div className="h-full overflow-y-auto">
             <div className="mx-auto max-w-5xl px-6 py-8">
-                <div className="mb-6 flex items-center gap-2">
-                    <Sparkles className="size-5 text-accent" />
-                    <h1 className="text-lg font-semibold">Skills</h1>
+                <div className="mb-6 flex items-center gap-2.5">
+                    <span className="flex size-8 items-center justify-center rounded-lg bg-foreground/5 ring-1 ring-border/60">
+                        <Sparkles className="size-4 text-foreground/70" />
+                    </span>
+                    <h1 className="h-display">Skills</h1>
                     <span className="text-sm text-muted-foreground">
                         ({skillStore.skills.length})
                     </span>
@@ -135,17 +137,17 @@ function SkillDetail({ name, onBack }) {
     return (
         <div className="flex h-full">
             {/* left: file tree */}
-            <div className="flex w-60 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
+            <div className="flex w-56 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
                 <button
                     onClick={onBack}
-                    className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:text-foreground"
+                    className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground"
                 >
                     <ChevronLeft className="size-4" /> Skills
                 </button>
                 <div className="px-4 py-2">
                     <div className="flex items-center gap-2">
-                        <div className="flex size-8 items-center justify-center rounded-lg bg-accent/10">
-                            <Sparkles className="size-4 text-accent" />
+                        <div className="flex size-8 items-center justify-center rounded-lg bg-foreground/5 ring-1 ring-border/60">
+                            <Sparkles className="size-4 text-foreground/70" />
                         </div>
                         <span className="text-sm font-medium">{name}</span>
                     </div>
@@ -277,7 +279,7 @@ function TreeNode({
 function FileIcon({ name }) {
     const ext = name.split(".").pop()?.toLowerCase();
     if (ext === "md")
-        return <FileText className="size-3 shrink-0 text-accent/60" />;
+        return <FileText className="size-3 shrink-0 text-muted-foreground/60" />;
     if (
         [
             "py",
@@ -389,31 +391,31 @@ function SkillCard({ skill, onClick }) {
     return (
         <button
             onClick={onClick}
-            className="group rounded-xl border border-border/60 bg-card p-4 text-left transition hover:border-accent/40 hover:bg-sidebar/30"
+            className="rounded-card group p-6 text-left"
         >
-            <div className="mb-3 flex items-center gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-                    <Sparkles className="size-5 text-accent" />
+            <div className="mb-4 flex items-center gap-3">
+                <div className="card-icon-badge size-12 shrink-0">
+                    <Sparkles className="size-5" />
                 </div>
                 <div className="min-w-0">
-                    <span className="truncate text-sm font-medium">
+                    <span className="truncate font-display text-xl font-medium tracking-tight">
                         {skill.name}
                     </span>
                     <div className="mt-0.5 flex gap-1">
                         {skill.has_scripts && (
-                            <span className="rounded-sm bg-accent/10 px-1.5 py-0.5 text-[9px] text-accent">
+                            <span className="rounded-sm bg-foreground/10 px-1.5 py-0.5 text-[9px] text-muted-foreground">
                                 scripts
                             </span>
                         )}
                         {skill.has_references && (
-                            <span className="rounded-sm bg-muted/20 px-1.5 py-0.5 text-[9px] text-muted-foreground">
+                            <span className="rounded-sm bg-foreground/8 px-1.5 py-0.5 text-[9px] text-muted-foreground">
                                 refs
                             </span>
                         )}
                     </div>
                 </div>
             </div>
-            <p className="line-clamp-2 text-[11px] text-muted-foreground/70">
+            <p className="line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">
                 {skill.description || "(no description)"}
             </p>
         </button>

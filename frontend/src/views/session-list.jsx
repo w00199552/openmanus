@@ -73,7 +73,7 @@ export const SessionList = observer(function SessionList({
         <div className="flex h-full flex-col bg-card">
             {/* search */}
             <div className="px-2.5 pb-2 pt-3">
-                <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/50 px-2.5 py-1.5 transition focus-within:border-accent/40">
+                <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/50 px-3 py-1.5 transition focus-within:border-accent/40 focus-within:shadow-[0_0_0_3px_hsl(var(--accent)/0.12)]">
                     <Search className="size-3.5 shrink-0 text-muted-foreground/60" />
                     <input
                         value={query}
@@ -105,7 +105,7 @@ export const SessionList = observer(function SessionList({
                             empty={roots.length === 0}
                             emptyHint={query.trim() ? "No matches." : undefined}
                         >
-                            <ul className="space-y-0.5">
+                            <ul className="space-y-1">
                                 {roots.map((s) => (
                                     <SessionItem
                                         key={s.id}
@@ -127,7 +127,7 @@ export const SessionList = observer(function SessionList({
                                 query.trim() ? "No matches." : "No tasks yet."
                             }
                         >
-                            <ul className="space-y-0.5">
+                            <ul className="space-y-1">
                                 {tasks.map((s) => (
                                     <SessionItem
                                         key={s.id}
@@ -176,14 +176,14 @@ function SessionItem({ session, unread, active, onSelect, onDelete }) {
             <button
                 onClick={onSelect}
                 className={cn(
-                    "group relative flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition",
+                    "group relative flex w-full items-start gap-2.5 rounded-md px-2 py-2.5 text-left transition",
                     active
                         ? "bg-sidebar text-foreground"
                         : "text-muted-foreground hover:bg-sidebar/50 hover:text-foreground/80"
                 )}
             >
                 {active && (
-                    <span className="absolute left-0 top-1/2 h-7 w-[2px] -translate-y-1/2 rounded-full bg-accent" />
+                    <span className="absolute left-0 top-1/2 h-7 w-[2px] -translate-y-1/2 rounded-full bg-accent accent-glow" />
                 )}
 
                 {/* avatar with a live "pulse" dot when the agent is working */}
@@ -217,7 +217,7 @@ function SessionItem({ session, unread, active, onSelect, onDelete }) {
                                     : "Start a conversation")}
                         </span>
                         {isTeam && (
-                            <span className="shrink-0 rounded-sm bg-accent/15 px-1 text-[9px] font-medium leading-tight text-accent">
+                            <span className="shrink-0 rounded-sm bg-foreground/8 px-1 text-[9px] font-medium leading-tight text-muted-foreground">
                                 team
                             </span>
                         )}

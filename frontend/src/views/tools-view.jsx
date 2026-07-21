@@ -51,9 +51,11 @@ export const ToolsView = observer(function ToolsView() {
     return (
         <div className="h-full overflow-y-auto">
             <div className="mx-auto max-w-5xl px-6 py-8">
-                <div className="mb-6 flex items-center gap-2">
-                    <Wrench className="size-5 text-accent" />
-                    <h1 className="text-lg font-semibold">Tools</h1>
+                <div className="mb-6 flex items-center gap-2.5">
+                    <span className="flex size-8 items-center justify-center rounded-lg bg-foreground/5 ring-1 ring-border/60">
+                        <Wrench className="size-4 text-foreground/70" />
+                    </span>
+                    <h1 className="h-display">Tools</h1>
                     <span className="text-sm text-muted-foreground">
                         ({tools.length})
                     </span>
@@ -160,16 +162,16 @@ function ToolDetail({ name, onBack }) {
     if (notFound) {
         return (
             <div className="flex h-full">
-                <div className="flex w-60 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
+                <div className="flex w-56 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
                     <button
                         onClick={onBack}
-                        className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:text-foreground"
+                        className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground"
                     >
                         <ChevronLeft className="size-4" /> Tools
                     </button>
                     <div className="px-4 py-2">
                         <div className="flex items-center gap-2">
-                            <div className="flex size-8 items-center justify-center rounded-lg bg-accent/10">
+                            <div className="flex size-8 items-center justify-center rounded-lg bg-foreground/5 ring-1 ring-border/60">
                                 <Lock className="size-4 text-muted-foreground/50" />
                             </div>
                             <span className="text-sm font-medium">{name}</span>
@@ -190,17 +192,17 @@ function ToolDetail({ name, onBack }) {
 
     return (
         <div className="flex h-full">
-            <div className="flex w-60 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
+            <div className="flex w-56 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
                 <button
                     onClick={onBack}
-                    className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:text-foreground"
+                    className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground"
                 >
                     <ChevronLeft className="size-4" /> Tools
                 </button>
                 <div className="px-4 py-2">
                     <div className="flex items-center gap-2">
-                        <div className="flex size-8 items-center justify-center rounded-lg bg-accent/10">
-                            <Wrench className="size-4 text-accent" />
+                        <div className="flex size-8 items-center justify-center rounded-lg bg-foreground/5 ring-1 ring-border/60">
+                            <Wrench className="size-4 text-foreground/70" />
                         </div>
                         <span className="text-sm font-medium">{name}</span>
                     </div>
@@ -330,7 +332,7 @@ function TreeNode({
 function FileIcon({ name }) {
     const ext = name.split(".").pop()?.toLowerCase();
     if (ext === "md")
-        return <FileText className="size-3 shrink-0 text-accent/60" />;
+        return <FileText className="size-3 shrink-0 text-muted-foreground/60" />;
     if (
         [
             "py",
@@ -432,19 +434,19 @@ function ToolCard({ tool, onClick }) {
     return (
         <button
             onClick={onClick}
-            className="group rounded-xl border border-border/60 bg-card p-4 text-left transition hover:border-accent/40 hover:bg-sidebar/30"
+            className="rounded-card group p-6 text-left"
         >
-            <div className="mb-3 flex items-center gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
+            <div className="mb-4 flex items-center gap-3">
+                <div className="card-icon-badge size-12 shrink-0">
                     {tool.source === "builtin" ? (
-                        <Lock className="size-4 text-muted-foreground/50" />
+                        <Lock className="size-4" />
                     ) : (
-                        <Wrench className="size-5 text-accent" />
+                        <Wrench className="size-5" />
                     )}
                 </div>
                 <div className="min-w-0">
                     <div className="flex items-center gap-1">
-                        <span className="truncate text-sm font-medium">
+                        <span className="truncate font-display text-xl font-medium tracking-tight">
                             {tool.name}
                         </span>
                     </div>
@@ -453,7 +455,7 @@ function ToolCard({ tool, onClick }) {
                             className={cn(
                                 "rounded-sm px-1.5 py-0.5 text-[9px]",
                                 tool.source === "user"
-                                    ? "bg-accent/10 text-accent"
+                                    ? "bg-foreground/10 text-foreground/80"
                                     : "bg-muted/20 text-muted-foreground"
                             )}
                         >

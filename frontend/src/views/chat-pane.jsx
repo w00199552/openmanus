@@ -40,11 +40,11 @@ export const ChatPane = observer(function ChatPane({ onToggleCollapse }) {
         <TooltipProvider delayDuration={300}>
             <div className="flex h-full flex-col bg-background">
                 {/* header strip */}
-                <div className="flex items-center gap-2 border-b border-border/60 px-5 py-2.5">
+                <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-5">
                     <span
                         className={
                             isTeam
-                                ? "size-1.5 rounded-full bg-accent"
+                                ? "size-1.5 rounded-full bg-foreground/50"
                                 : "size-1.5 rounded-full bg-muted-foreground/40"
                         }
                     />
@@ -58,7 +58,7 @@ export const ChatPane = observer(function ChatPane({ onToggleCollapse }) {
                             : "New conversation"}
                     </span>
                     {isTeam && (
-                        <span className="rounded-sm bg-accent/10 px-1.5 text-[10px] text-accent">
+                        <span className="rounded-sm bg-foreground/8 px-1.5 text-[10px] text-muted-foreground">
                             team
                         </span>
                     )}

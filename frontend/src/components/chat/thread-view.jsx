@@ -5,10 +5,12 @@ import {
     ChevronDown,
     ChevronRight,
     Loader2,
+    Sparkles,
     Wrench,
 } from "lucide-react";
 
 import { Avatar } from "@/components/avatar";
+import { MarkdownText } from "@/components/chat/markdown-text";
 
 /**
  * ThreadView — a PURE presentational chat surface (no assistant-ui runtime).
@@ -45,9 +47,19 @@ export const ThreadView = observer(function ThreadView({
     if (!messages.length) {
         return (
             <div className="flex h-full items-center justify-center px-6">
-                <p className="text-sm text-muted-foreground">
-                    What would you like to build or change today?
-                </p>
+                <div className="anim-rise text-center">
+                    <div className="mb-4 flex items-center justify-center">
+                        <span className="flex size-12 items-center justify-center rounded-full bg-accent/8 ring-1 ring-accent/20">
+                            <Sparkles className="size-5 text-accent/80" />
+                        </span>
+                    </div>
+                    <p className="font-display text-lg font-medium tracking-tight text-foreground">
+                        What would you like to build today?
+                    </p>
+                    <p className="mt-1.5 text-[12px] text-muted-foreground">
+                        Ask anything, run a skill, or dispatch a sub-agent.
+                    </p>
+                </div>
             </div>
         );
     }
@@ -96,7 +108,7 @@ function UserMessage({ message, session }) {
                 <p className="mb-1 text-right text-[11px] font-medium text-muted-foreground">
                     {label}
                 </p>
-                <div className="rounded-2xl rounded-tr-sm bg-accent/15 px-3.5 py-2">
+                <div className="rounded-2xl rounded-tr-sm border border-accent/20 bg-accent/10 px-3.5 py-2 transition hover:border-accent/30 hover:bg-accent/15">
                     <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground">
                         {text}
                     </p>
@@ -157,13 +169,24 @@ const AssistantMessage = observer(function AssistantMessage({
                 {/* render parts IN ORDER: text + tool-call interleaved */}
                 {parts.map((part, i) => {
                     if (part.type === "text" && part.text) {
+                        // Last text part of a streaming message gets a blinking
+                        // lime cursor to signal "still typing". The cursor
+                        // rides on the wrapper (not inside MarkdownText) since
+                        // markdown may render multiple block elements.
+                        const isLast =
+                            streaming &&
+                            i ===
+                                parts.length -
+                                    1 -
+                                    [...parts]
+                                        .reverse()
+                                        .findIndex((p) => p.type === "text");
                         return (
-                            <p
+                            <MarkdownText
                                 key={`t-${i}`}
-                                className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground"
-                            >
-                                {part.text}
-                            </p>
+                                content={part.text}
+                                className={isLast ? "typing-cursor" : ""}
+                            />
                         );
                     }
                     if (part.type === "tool-call") {
@@ -196,7 +219,7 @@ const ThinkingBlock = observer(function ThinkingBlock({ text, live }) {
         if (el && open) el.scrollTop = el.scrollHeight;
     }, [text, open]);
     return (
-        <div className="mb-2 rounded-md border border-border/40 bg-sidebar/30">
+        <div className="mb-2 rounded-lg border border-border/50 bg-sidebar/30">
             <button
                 onClick={() => setOpen((o) => !o)}
                 className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-muted-foreground/80 transition hover:text-foreground"
@@ -207,9 +230,9 @@ const ThinkingBlock = observer(function ThinkingBlock({ text, live }) {
                     <ChevronRight className="size-3" />
                 )}
                 <Brain className="size-3 text-muted-foreground/60" />
-                <span>{live ? "思考中" : "思考过程"}</span>
+                <span>{live ? "Thinking" : "Reasoning"}</span>
                 {live && (
-                    <Loader2 className="ml-1 size-3 animate-spin text-muted-foreground/50" />
+                    <Loader2 className="ml-1 size-3 animate-spin text-accent" />
                 )}
             </button>
             {open && (
@@ -231,7 +254,7 @@ const ToolFence = observer(function ToolFence({ tool }) {
         tool && tool.result == null && !tool.isError && tool._streaming;
     return (
         <div className="my-1.5">
-            <div className="rounded-md border border-border/60 bg-card/60">
+            <div className="rounded-lg border border-border/50 bg-card/50">
                 <button
                     onClick={() => setOpen((o) => !o)}
                     className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-muted-foreground transition hover:text-foreground"
@@ -241,18 +264,18 @@ const ToolFence = observer(function ToolFence({ tool }) {
                     ) : (
                         <ChevronRight className="size-3" />
                     )}
-                    <Wrench className="size-3 text-accent" />
+                    <Wrench className="size-3 text-muted-foreground/70" />
                     <span className="font-mono">
                         {tool?.toolName || "tool"}
                     </span>
                     {running ? (
                         <Loader2 className="ml-auto size-3 animate-spin text-accent" />
                     ) : tool?.result != null ? (
-                        <span className="ml-auto size-1.5 rounded-full bg-accent ring-2 ring-accent/20" />
+                        <span className="ml-auto size-1.5 rounded-full bg-accent accent-glow" />
                     ) : null}
                 </button>
                 {open && (
-                    <pre className="max-h-60 overflow-auto border-t border-border/60 px-2.5 py-2 font-mono text-[11px] text-muted-foreground">
+                    <pre className="max-h-60 overflow-auto border-t border-border/50 px-2.5 py-2 font-mono text-[11px] text-muted-foreground">
                         {tool?.args || "(no args)"}
                         {tool?.result != null && (
                             <span className="mt-1 block border-t border-border/40 pt-1 text-foreground/70">

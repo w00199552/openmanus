@@ -7,7 +7,6 @@ import {
     ChevronLeft,
     FileText,
     Lock,
-    Plus,
     Save,
     Sparkles,
     Wrench,
@@ -16,6 +15,7 @@ import MDEditor from "@uiw/react-md-editor";
 
 import { useStore } from "@/hooks/use-store";
 import { Avatar } from "@/components/avatar";
+import { FancyButton } from "@/components/ui/fancy-button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -68,13 +68,9 @@ export const AgentsView = observer(function AgentsView() {
             <div className="mx-auto max-w-5xl px-6 py-8">
                 <div className="mb-6 flex items-center justify-between">
                     <Header />
-                    <button
-                        onClick={() => setCreateMode(true)}
-                        className="flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-[13px] text-muted-foreground transition hover:border-accent/40 hover:text-foreground"
-                    >
-                        <Plus className="size-3.5" />
+                    <FancyButton onClick={() => setCreateMode(true)}>
                         New Agent
-                    </button>
+                    </FancyButton>
                 </div>
 
                 {/* builtin agents */}
@@ -136,7 +132,7 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
             <div className="flex w-56 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
                 <button
                     onClick={onBack}
-                    className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:text-foreground"
+                    className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground"
                 >
                     <ChevronLeft className="size-4" />
                     Agents
@@ -206,7 +202,7 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
                         <button
                             onClick={() => s.save()}
                             disabled={s.saving}
-                            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent/15 px-3 py-2 text-[13px] text-accent transition hover:bg-accent/25 disabled:opacity-50"
+                            className="flex w-full items-center justify-center gap-1.5 rounded-full bg-accent/15 px-3 py-2 text-[13px] text-accent transition hover:bg-accent/25 disabled:opacity-50"
                         >
                             <Save className="size-3.5" />
                             {s.saving ? "Saving…" : "Save"}
@@ -223,7 +219,7 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
 
             {/* right content */}
             <div className="min-h-0 flex-1 overflow-hidden">
-                <div className="flex h-full flex-col px-6 py-6">
+                <div className="mx-auto flex h-full w-full max-w-2xl flex-col px-8 py-8">
                     {tab === "info" && (
                         <div className="space-y-4">
                             <div>
@@ -291,7 +287,7 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
                             <p className="mb-4 text-[12px] text-muted-foreground">
                                 Select which tools this agent can use.
                             </p>
-                            <div className="space-y-1.5">
+                            <div className="space-y-2">
                                 {s.tools.map((tool) => {
                                     const checked = s.toolDraft.has(tool.name);
                                     return (
@@ -339,7 +335,7 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
                                                             "rounded-sm px-1 py-0.5 text-[9px]",
                                                             tool.source ===
                                                                 "user"
-                                                                ? "bg-accent/10 text-accent"
+                                                                ? "bg-foreground/10 text-foreground/80"
                                                                 : "bg-muted/20 text-muted-foreground"
                                                         )}
                                                     >
@@ -371,7 +367,7 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
                                     ~/.openmanus/skills/.
                                 </p>
                             ) : (
-                                <div className="space-y-1.5">
+                                <div className="space-y-2">
                                     {s.skills.map((skill) => {
                                         const checked = s.skillDraft.has(
                                             skill.name
@@ -417,7 +413,7 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
                                                             {skill.name}
                                                         </span>
                                                         {skill.has_scripts && (
-                                                            <span className="rounded-sm bg-accent/10 px-1 py-0.5 text-[9px] text-accent">
+                                                            <span className="rounded-sm bg-foreground/10 px-1 py-0.5 text-[9px] text-muted-foreground">
                                                                 scripts
                                                             </span>
                                                         )}
@@ -469,13 +465,13 @@ function AgentCard({ agent, onClick }) {
     return (
         <button
             onClick={onClick}
-            className="group rounded-xl border border-border/60 bg-card p-4 text-left transition hover:border-accent/40 hover:bg-sidebar/30"
+            className="rounded-card group p-6 text-left"
         >
-            <div className="mb-3 flex items-center gap-3">
-                <Avatar seed={agent.name} size={40} />
+            <div className="mb-4 flex items-center gap-3">
+                <Avatar seed={agent.name} size={44} />
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1">
-                        <span className="truncate text-sm font-medium">
+                        <span className="truncate font-display text-xl font-medium tracking-tight">
                             {agent.name}
                         </span>
                         {agent.is_builtin && (
@@ -488,7 +484,7 @@ function AgentCard({ agent, onClick }) {
                 </div>
             </div>
             {agent.description && (
-                <p className="mb-2 line-clamp-2 text-[11px] text-muted-foreground/70">
+                <p className="mb-3 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">
                     {agent.description}
                 </p>
             )}
@@ -510,9 +506,11 @@ function AgentCard({ agent, onClick }) {
 
 function Header() {
     return (
-        <div className="mb-6 flex items-center gap-2">
-            <Bot className="size-5 text-accent" />
-            <h1 className="text-lg font-semibold">Agents</h1>
+        <div className="mb-6 flex items-center gap-2.5">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-foreground/5 ring-1 ring-border/60">
+                <Bot className="size-4 text-foreground/70" />
+            </span>
+            <h1 className="h-display">Agents</h1>
         </div>
     );
 }
@@ -524,8 +522,8 @@ function TabBtn({ active, onClick, icon, children }) {
             className={cn(
                 "flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition",
                 active
-                    ? "bg-accent/10 text-accent font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-sidebar/40"
+                    ? "bg-foreground/8 text-foreground font-medium"
+                    : "text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
             )}
         >
             {icon}
@@ -602,7 +600,7 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
             <div className="flex w-56 shrink-0 flex-col border-r border-border/60 bg-sidebar/20">
                 <button
                     onClick={onBack}
-                    className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:text-foreground"
+                    className="flex items-center gap-1 px-4 py-3 text-sm text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground"
                 >
                     <ChevronLeft className="size-4" />
                     Agents
@@ -660,7 +658,7 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
                     <button
                         onClick={handleCreate}
                         disabled={!name.trim() || s.saving}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent/15 px-3 py-2 text-[13px] text-accent transition hover:bg-accent/25 disabled:opacity-50"
+                        className="flex w-full items-center justify-center gap-1.5 rounded-full bg-accent/15 px-3 py-2 text-[13px] text-accent transition hover:bg-accent/25 disabled:opacity-50"
                     >
                         <Save className="size-3.5" />
                         {s.saving ? "Creating…" : "Create"}
@@ -670,7 +668,7 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
 
             {/* right content */}
             <div className="min-h-0 flex-1 overflow-hidden">
-                <div className="flex h-full flex-col px-6 py-6">
+                <div className="mx-auto flex h-full w-full max-w-2xl flex-col px-8 py-8">
                     {tab === "info" && (
                         <div className="space-y-4">
                             <h2 className="text-sm font-medium">Agent Info</h2>
@@ -685,7 +683,8 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
                                     className="w-full rounded-lg border border-border/60 bg-sidebar/30 px-3 py-2 text-[13px] outline-none focus:border-accent/40"
                                 />
                                 <p className="mt-1 text-[11px] text-muted-foreground/60">
-                                    Agent 唯一标识，创建后不可修改。
+                                    Unique agent identifier. Cannot be changed
+                                    after creation.
                                 </p>
                             </div>
                             <div>
@@ -733,7 +732,7 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
                                 Select tools for this agent. Create or import
                                 new tools in the Tools page.
                             </p>
-                            <div className="space-y-1.5">
+                            <div className="space-y-2">
                                 {s.tools.map((tool) => {
                                     const checked = selectedTools.has(
                                         tool.name
@@ -773,7 +772,7 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
                                                             "rounded-sm px-1 py-0.5 text-[9px]",
                                                             tool.source ===
                                                                 "user"
-                                                                ? "bg-accent/10 text-accent"
+                                                                ? "bg-foreground/10 text-foreground/80"
                                                                 : "bg-muted/20 text-muted-foreground"
                                                         )}
                                                     >
@@ -802,7 +801,7 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
                                     No skills installed in ~/.openmanus/skills/.
                                 </p>
                             ) : (
-                                <div className="space-y-1.5">
+                                <div className="space-y-2">
                                     {s.skills.map((skill) => {
                                         const checked = selectedSkills.has(
                                             skill.name
@@ -887,7 +886,7 @@ function Centered({ children }) {
 
 function SectionTitle({ children }) {
     return (
-        <div className="mb-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+        <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.15em] text-foreground/45">
             {children}
         </div>
     );
@@ -897,10 +896,10 @@ function Toast({ type, message }) {
     return (
         <div
             className={cn(
-                "fixed right-4 top-14 z-50 flex items-center gap-2 rounded-lg px-4 py-2.5 text-[13px] shadow-lg",
+                "fixed right-4 top-14 z-50 flex items-center gap-2 rounded-full px-4 py-2.5 text-[13px] shadow-lg anim-rise",
                 type === "error"
                     ? "bg-destructive/15 text-destructive"
-                    : "bg-accent/15 text-accent"
+                    : "bg-accent/15 text-accent accent-glow"
             )}
         >
             {type === "error" ? (

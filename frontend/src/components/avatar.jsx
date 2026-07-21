@@ -51,7 +51,7 @@ export function Avatar({ seed, size = 36, className }) {
             height={size}
             loading="lazy"
             className={cn(
-                "shrink-0 rounded-full bg-card/60 object-cover ring-1 ring-border/80",
+                "shrink-0 rounded-full bg-card/60 object-cover ring-1 ring-border",
                 className
             )}
             style={{ width: size, height: size }}
@@ -76,7 +76,7 @@ export function TeamAvatar({ seeds, size = 36 }) {
 
     return (
         <div
-            className="relative flex shrink-0 items-center justify-center rounded-xl bg-accent/15 ring-1 ring-accent/30"
+            className="relative flex shrink-0 items-center justify-center rounded-xl bg-sidebar ring-1 ring-border"
             style={{ width: size, height: size }}
         >
             {/* up to 4 mini faces in a 2x2 grid inside the badge */}

@@ -1,10 +1,47 @@
 @import "tailwindcss";
 
-/* ── Fonts: one family, two weights (omma.build discipline) ─────────────── */
-/* Geist (sans) for chrome/labels; JetBrains Mono for code/agent output.
-   (all @import statements must precede other rules per PostCSS) */
-@import "@fontsource-variable/geist/wght.css";
+/* ── Fonts: Satoshi (body) + ClashDisplay (display) + JetBrains Mono (code) ──
+   Satoshi & ClashDisplay are self-hosted (Fontshare, free license) so the
+   Electron desktop build works fully offline. JetBrains Mono stays via
+   @fontsource-variable for code/agent output. All @import statements must
+   precede other rules per PostCSS. */
 @import "@fontsource-variable/jetbrains-mono/wght.css";
+
+@font-face {
+    font-family: "Satoshi";
+    src: url("/fonts/Satoshi-400.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "Satoshi";
+    src: url("/fonts/Satoshi-500.woff2") format("woff2");
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "Satoshi";
+    src: url("/fonts/Satoshi-700.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "ClashDisplay";
+    src: url("/fonts/ClashDisplay-500.woff2") format("woff2");
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "ClashDisplay";
+    src: url("/fonts/ClashDisplay-600.woff2") format("woff2");
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
 
 /*
  * Register the design tokens as Tailwind v4 theme colors so utility classes
@@ -14,109 +51,139 @@
  * semantic tokens stay single-source.
  */
 @theme {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-sidebar: hsl(var(--sidebar));
-  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
+    --color-background: hsl(var(--background));
+    --color-foreground: hsl(var(--foreground));
+    --color-card: hsl(var(--card));
+    --color-card-foreground: hsl(var(--card-foreground));
+    --color-sidebar: hsl(var(--sidebar));
+    --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+    --color-popover: hsl(var(--popover));
+    --color-popover-foreground: hsl(var(--popover-foreground));
+    --color-primary: hsl(var(--primary));
+    --color-primary-foreground: hsl(var(--primary-foreground));
+    --color-secondary: hsl(var(--secondary));
+    --color-secondary-foreground: hsl(var(--secondary-foreground));
+    --color-muted: hsl(var(--muted));
+    --color-muted-foreground: hsl(var(--muted-foreground));
+    --color-accent: hsl(var(--accent));
+    --color-accent-foreground: hsl(var(--accent-foreground));
+    --color-success: hsl(var(--success));
+    --color-success-foreground: hsl(var(--success-foreground));
+    --color-warning: hsl(var(--warning));
+    --color-warning-foreground: hsl(var(--warning-foreground));
+    --color-info: hsl(var(--info));
+    --color-info-foreground: hsl(var(--info-foreground));
+    --color-destructive: hsl(var(--destructive));
+    --color-destructive-foreground: hsl(var(--destructive-foreground));
+    --color-border: hsl(var(--border));
+    --color-input: hsl(var(--input));
+    --color-ring: hsl(var(--ring));
 
-  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+    --font-sans: "Satoshi", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-display: "ClashDisplay", "Satoshi", ui-sans-serif, system-ui,
+        sans-serif;
+    --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
 }
 
 /*
- * openmanus design system — "quiet dark, cinematic minimal".
- * Inspired by omma.build: near-black background, a single muted accent,
- * generous whitespace, restrained motion. The content leads; the chrome
- * recedes.
+ * openmanus design system — "editorial dark, bold minimal".
+ * Inspired by devrajchatribin.com: near-black tinted background, a single
+ * high-saturation lime accent, cold-blue-white text, display+body type
+ * contrast, hairline dividers instead of box shadows. The content leads; the
+ * chrome recedes.
  */
 
 @layer base {
-  :root {
-    /* ── Surface (near-black, layered) ─────────────────────────────── */
-    /* Three tiers create depth: chat (deepest) < rails (mid) < sidebar (top).
-       Steps are large enough to read at a glance (≈5–8 lightness points). */
-    --background: 240 6% 4%;        /* #0a0a0b — deepest: chat area focus */
-    --foreground: 240 5% 93%;       /* #ededee — primary text */
-    --card: 240 5% 10%;             /* #18181d — mid: left rail, cards */
-    --card-foreground: 240 5% 93%;  /* readable text on card */
-    --sidebar: 240 5% 16%;          /* #272730 — top: right playground rail */
-    --sidebar-foreground: 240 5% 90%;
-    --popover: 240 5% 18%;          /* #2c2c36 — menus, popovers, tooltips */
-    --popover-foreground: 240 5% 93%; /* readable text on popover */
+    :root {
+        /* ── Surface (tinted near-black, layered) ──────────────────────── */
+        /* Three tiers create depth: chat (deepest) < rails (mid) < sidebar (top).
+           Background is tinted (not pure #000) to avoid OLED glare and add a
+           subtle cool mood — a signature of "premium dark" palettes. */
+        --background: 240 6% 4%; /* #0a0a0c — deepest: chat area focus */
+        --foreground: 230 100% 98%; /* #f6f7ff — cold-blue-white primary text */
+        --card: 240 5% 7%; /* #111114 — mid: left rail, cards */
+        --card-foreground: 230 100% 98%;
+        --sidebar: 240 5% 10%; /* #18181c — top: right playground rail */
+        --sidebar-foreground: 240 9% 96%;
+        --popover: 240 5% 9%; /* #161619 — menus, popovers, tooltips */
+        --popover-foreground: 230 100% 98%;
 
-    /* ── Text (soft, never pure white) ─────────────────────────────── */
-    --muted: 240 5% 12%;            /* quiet surface (was wrongly = card) */
-    --muted-foreground: 240 4% 45%; /* #6b6b72 — quiet labels */
+        /* ── Text (soft, cold-blue-white — never pure white) ──────────── */
+        --muted: 240 5% 12%; /* quiet surface */
+        --muted-foreground: 240 7% 78%; /* #c0c0cf — quiet labels */
 
-    /* ── The single accent: soft sky glow ──────────────────────────── */
-    --accent: 199 70% 70%;          /* #7dd3fc — active/running/links */
-    --accent-foreground: 240 6% 4%; /* dark text on accent */
+        /* ── ⭐ The single accent: bold lime (signature color) ─────────── */
+        /* A high-saturation acid lime — the visual anchor of the whole app.
+           Used for active states, running indicators, links, key CTAs. */
+        --accent: 88 100% 72%; /* #b5ff6d — bold lime */
+        --accent-foreground: 240 6% 4%; /* dark text on accent */
 
-    /* kept for shadcn parity, tuned to the palette */
-    --primary: 199 70% 70%;
-    --primary-foreground: 240 6% 4%;
-    --secondary: 240 5% 12%;
-    --secondary-foreground: 240 5% 93%;
-    --destructive: 0 60% 55%;
-    --destructive-foreground: 240 5% 93%;
+        /* kept for shadcn parity, tuned to the palette */
+        --primary: 88 100% 72%;
+        --primary-foreground: 240 6% 4%;
+        --secondary: 240 5% 12%;
+        --secondary-foreground: 230 100% 98%;
 
-    /* ── Lines (almost invisible) ──────────────────────────────────── */
-    --border: 240 5% 13%;           /* #1e1e22 — whisper-thin dividers */
-    --input: 240 5% 13%;
-    --ring: 199 70% 70%;
+        /* ── Semantic colors (for success/warning/info states) ────────── */
+        --success: 152 50% 55%; /* green — done/ok */
+        --success-foreground: 240 6% 4%;
+        --warning: 38 80% 60%; /* amber — caution */
+        --warning-foreground: 240 6% 4%;
+        --info: 199 70% 65%; /* sky — informational */
+        --info-foreground: 240 6% 4%;
+        --destructive: 0 60% 55%; /* red — errors */
+        --destructive-foreground: 230 100% 98%;
 
-    --radius: 0.625rem;
+        /* ── Lines (almost invisible hairlines) ───────────────────────── */
+        --border: 240 7% 14%; /* #232328 — whisper-thin dividers */
+        --input: 240 7% 14%;
+        --ring: 88 100% 72%; /* focus ring follows accent */
 
-    /* semantic role colors (used sparingly, only as small dots/chips) */
-    --role-teamleader: 152 50% 55%;
-    --role-researcher: 199 70% 65%;
-    --role-coder: 38 80% 60%;
-    --role-user: 240 5% 70%;
-    --role-system: 0 60% 55%;
-  }
+        --radius: 0.5rem; /* 8px base — devraj-style restraint */
 
-  * {
-    border-color: hsl(var(--border));
-  }
+        /* semantic role colors (used sparingly, only as small dots/chips) */
+        --role-teamleader: 152 50% 55%;
+        --role-researcher: 199 70% 65%;
+        --role-coder: 38 80% 60%;
+        --role-user: 240 5% 70%;
+        --role-system: 0 60% 55%;
+    }
 
-  html,
-  body,
-  #root {
-    height: 100%;
-  }
+    * {
+        border-color: hsl(var(--border));
+    }
 
-  body {
-    margin: 0;
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-    /* Native controls (select dropdowns, date pickers, scrollbars) render in
-       dark mode, matching the canvas. Stops the team @-selector option list
-       from popping up in a jarring light theme. */
-    color-scheme: dark;
-    /* Geist for UI chrome */
-    font-family:
-      "Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
-    font-feature-settings: "cv11", "ss01";
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
+    html,
+    body,
+    #root {
+        height: 100%;
+    }
+
+    body {
+        margin: 0;
+        background-color: hsl(var(--background));
+        color: hsl(var(--foreground));
+        /* Native controls (select dropdowns, date pickers, scrollbars) render in
+           dark mode, matching the canvas. */
+        color-scheme: dark;
+        /* Satoshi for UI chrome (display headings opt-in via .font-display) */
+        font-family: "Satoshi", ui-sans-serif, system-ui, -apple-system,
+            sans-serif;
+        font-feature-settings: "ss01";
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Headings: default to ClashDisplay for editorial display contrast.
+       Body text and UI labels stay Satoshi. Override per-element if needed. */
+    h1,
+    h2,
+    h3 {
+        font-family: "ClashDisplay", "Satoshi", ui-sans-serif, system-ui,
+            sans-serif;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+    }
 }
 
 /* Placeholder color — outside @layer base so it has higher priority than
@@ -125,132 +192,324 @@
 ::placeholder,
 textarea::placeholder,
 input::placeholder {
-  color: #6b6b72 !important;
-  opacity: 0.6 !important;
+    color: #8a8a96 !important;
+    opacity: 0.7 !important;
 }
 
-  /* Electron: make elements with appRegion:drag actually draggable */
-  [style*="app-region: drag"],
-  [style*="appRegion: drag"] {
+/* Electron: make elements with appRegion:drag actually draggable */
+[style*="app-region: drag"],
+[style*="appRegion: drag"] {
     -webkit-app-region: drag;
-  }
-  [style*="app-region: no-drag"],
-  [style*="appRegion: no-drag"] {
+}
+[style*="app-region: no-drag"],
+[style*="appRegion: no-drag"] {
     -webkit-app-region: no-drag;
-  }
+}
 
-  /* monospace utility — agent output, code, status (JetBrains Mono) */
-  .font-mono,
-  code,
-  pre,
-  kbd {
+/* monospace utility — agent output, code, status (JetBrains Mono) */
+.font-mono,
+code,
+pre,
+kbd {
     font-family: "JetBrains Mono Variable", ui-monospace, monospace;
-  }
+}
 
-  /* Scrollbars: minimal, fade in on hover */
-  ::-webkit-scrollbar {
+/* Scrollbars: minimal, fade in on hover, tinted toward the accent */
+::-webkit-scrollbar {
     width: 6px;
     height: 6px;
-  }
-  ::-webkit-scrollbar-track {
+}
+::-webkit-scrollbar-track {
     background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: hsl(240 5% 18%);
+}
+::-webkit-scrollbar-thumb {
+    background: hsl(240 5% 20%);
     border-radius: 999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: hsl(240 4% 28%);
-  }
-
+}
+::-webkit-scrollbar-thumb:hover {
+    background: hsl(88 100% 72% / 0.4);
+}
 
 /* ── Resizable panel separators ───────────────────────────────────────────
    react-resizable-panels v4: the drag handle is the Separator itself. We give
-   it a generous hit area (w-1.5) with a thin visible line inside, and brighten
-   the line on hover / while dragging (data-separator attribute carries state). */
+   it a generous hit area (w-1.5) with a thin visible line inside.
+
+   The default line is a touch brighter than a hairline border so users can
+   see that the panels are resizable; on hover/drag it turns accent lime and
+   a small centered "grip" dot fades in to clearly signal draggability. */
+.sep-line {
+    background: hsl(var(--border));
+}
 .sep-bar:hover .sep-line,
 .sep-bar[data-separator]:active .sep-line {
-  background: hsl(var(--accent) / 0.6) !important;
-  width: 2px;
+    background: hsl(var(--accent) / 0.7) !important;
+    width: 2px;
+}
+/* Hover/drag grip: a tiny centered dot that fades in to signal "drag here".
+   Pure CSS — no JSX changes needed. Only shows on hover so it stays out of
+   the way at rest. */
+.sep-bar::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 4px;
+    height: 24px;
+    border-radius: 9999px;
+    background: hsl(var(--accent) / 0.8);
+    transform: translate(-50%, -50%) scaleX(0);
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+}
+.sep-bar:hover::after,
+.sep-bar[data-separator]:active::after {
+    transform: translate(-50%, -50%) scaleX(1);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Component layer — shared surface/card/divider primitives.
+   Replaces the scattered cn("rounded-xl border border-border/60 bg-card …")
+   patterns across views with a single editorial vocabulary: hairline borders,
+   subtle surface tints, no drop shadows.
+   ───────────────────────────────────────────────────────────────────────── */
+@layer components {
+    /* Card surface: subtle raised tint + hairline border, no shadow. */
+    .surface-card {
+        border-radius: var(--radius);
+        border: 1px solid hsl(var(--border) / 0.7);
+        background-color: hsl(var(--card) / 0.5);
+    }
+    /* Stronger raised surface (used on hover, active rails). */
+    .surface-raised {
+        border-radius: var(--radius);
+        border: 1px solid hsl(var(--border) / 0.7);
+        background-color: hsl(var(--sidebar) / 0.4);
+    }
+    /* Whisper-thin horizontal divider (devraj editorial style). */
+    .hairline {
+        height: 1px;
+        width: 100%;
+        background-color: hsl(var(--border));
+    }
+
+    /* ── Rounded outline card (devraj about "process" style) ────────────
+       A bigger, softer card vocabulary for content grids (agents/skills/
+       tools). 24px radius gives the pillowy "rounded" feel, a 1px hairline
+       outline frames it without weighing the canvas down, and the
+       transparent background lets the page bleed through — so cards read
+       as outlined regions, not stacked boxes. Matches devraj's
+       `.rounded-3xl .border .p-6` process cards. */
+    .rounded-card {
+        /* A faint surface tint + a brighter-than-hairline outline so the
+           card silhouette stays visible against the dark canvas. Pure
+           transparent bg (devraj style) left the cards "melting" into the
+           background at the audit; this reads as a structured container
+           while still feeling light. */
+        background-color: hsl(var(--sidebar) / 0.18);
+        border: 1px solid hsl(var(--foreground) / 0.12);
+        border-radius: 1.5rem; /* 24px — matches devraj rounded-3xl */
+        transition:
+            border-color 0.3s ease,
+            background-color 0.3s ease;
+    }
+    .rounded-card:hover {
+        border-color: hsl(var(--foreground) / 0.4);
+        background-color: hsl(var(--sidebar) / 0.35);
+    }
+
+    /* ── Editorial row card (devraj about/experience style) ──────────────
+       The opposite of a "box card": transparent background, NO side/top
+       border, only a 1px bottom hairline separating it from the next row.
+       Square corners. On hover the hairline brightens toward the foreground
+       and the row's text lifts — restraint over ornament. This reads as a
+       list of records, not a grid of boxes. */
+    .hairline-card {
+        background-color: transparent;
+        border: 0;
+        border-bottom: 1px solid hsl(var(--border));
+        border-radius: 0;
+        transition:
+            border-color 0.3s ease,
+            color 0.3s ease;
+    }
+    .hairline-card:hover {
+        border-bottom-color: hsl(var(--foreground) / 0.35);
+    }
+    /* Remove the bottom hairline on the last row of a group so the list
+       doesn't double up with the container's own edge. */
+    .hairline-card-group > .hairline-card:last-child {
+        border-bottom: 0;
+    }
+
+    /* ── Card icon badge (devraj process card icon container) ───────────
+       A circular badge that holds a card's leading icon. Sits on a faint
+       surface tint with a hairline ring; the icon itself uses the accent
+       color so each card has ONE point of color without flooding the grid.
+       Matches devraj's `.rounded-full .border .p-4 .bg-bg-700`. */
+    .card-icon-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 9999px;
+        border: 1px solid hsl(var(--border));
+        background-color: hsl(var(--sidebar) / 0.5);
+        padding: 1rem;
+        color: hsl(var(--accent));
+    }
+
+    /* Display headings — ClashDisplay, weight 500, tight leading. */
+    .h-display {
+        font-family: "ClashDisplay", "Satoshi", ui-sans-serif, system-ui,
+            sans-serif;
+        font-size: 1.875rem; /* 30px — page-level presence */
+        font-weight: 500;
+        line-height: 1.1;
+        letter-spacing: -0.015em;
+    }
+    .h-section {
+        font-family: "ClashDisplay", "Satoshi", ui-sans-serif, system-ui,
+            sans-serif;
+        font-size: 1rem;
+        font-weight: 500;
+        line-height: 1.2;
+        letter-spacing: -0.01em;
+    }
 }
 
 @layer utilities {
-  /* Content width: omma-style focused column */
-  .content-narrow {
-    max-width: 720px;
-    margin-inline: auto;
-  }
-
-  /* Role text colors (match the role dots) — for team group-chat avatars */
-  .text-role-teamleader {
-    color: hsl(var(--role-teamleader));
-  }
-  .text-role-researcher {
-    color: hsl(var(--role-researcher));
-  }
-  .text-role-coder {
-    color: hsl(var(--role-coder));
-  }
-  .text-role-user {
-    color: hsl(var(--role-user));
-  }
-  .text-role-system {
-    color: hsl(var(--role-system));
-  }
-
-  /* Restrained entrance animation */
-  .anim-rise {
-    animation: rise 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  @keyframes rise {
-    from {
-      opacity: 0;
-      transform: translateY(4px);
+    /* Display font opt-in (for non-heading elements that need display feel). */
+    .font-display {
+        font-family: "ClashDisplay", "Satoshi", ui-sans-serif, system-ui,
+            sans-serif;
     }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
 
-  /* Live "agent working" pulse dot on a session avatar */
-  .animate-pulse-dot {
-    animation: pulse-dot 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-  @keyframes pulse-dot {
-    0%,
-    100% {
-      opacity: 1;
-      transform: scale(1);
-      box-shadow: 0 0 0 0 hsl(var(--accent) / 0.5);
+    /* Content width: focused column for chat messages / input */
+    .content-narrow {
+        max-width: 720px;
+        margin-inline: auto;
     }
-    50% {
-      opacity: 0.7;
-      transform: scale(1.15);
-      box-shadow: 0 0 0 4px hsl(var(--accent) / 0);
+
+    /* Role text colors (match the role dots) — for team group-chat avatars */
+    .text-role-teamleader {
+        color: hsl(var(--role-teamleader));
     }
-  }
+    .text-role-researcher {
+        color: hsl(var(--role-researcher));
+    }
+    .text-role-coder {
+        color: hsl(var(--role-coder));
+    }
+    .text-role-user {
+        color: hsl(var(--role-user));
+    }
+    .text-role-system {
+        color: hsl(var(--role-system));
+    }
 
-  /* subtle glow for the single accent (active states) */
-  .accent-glow {
-    box-shadow: 0 0 0 1px hsl(var(--accent) / 0.2),
-      0 0 12px -2px hsl(var(--accent) / 0.25);
-  }
+    /* ── Motion ─────────────────────────────────────────────────────── */
+    /* Restrained staggered entrance. Pair with .anim-delay-{1..4} to get the
+       devraj-style cascade rhythm (≈80ms steps). */
+    .anim-rise {
+        animation: rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    .anim-delay-1 {
+        animation-delay: 80ms;
+    }
+    .anim-delay-2 {
+        animation-delay: 160ms;
+    }
+    .anim-delay-3 {
+        animation-delay: 240ms;
+    }
+    .anim-delay-4 {
+        animation-delay: 320ms;
+    }
+    @keyframes rise {
+        from {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
 
-  /* role dot helpers */
-  .dot-teamleader {
-    background: hsl(var(--role-teamleader));
-  }
-  .dot-researcher {
-    background: hsl(var(--role-researcher));
-  }
-  .dot-coder {
-    background: hsl(var(--role-coder));
-  }
-  .dot-user {
-    background: hsl(var(--role-user));
-  }
-  .dot-system {
-    background: hsl(var(--role-system));
-  }
+    /* Live "agent working" pulse dot on a session avatar */
+    .animate-pulse-dot {
+        animation: pulse-dot 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse-dot {
+        0%,
+        100% {
+            opacity: 1;
+            transform: scale(1);
+            box-shadow: 0 0 0 0 hsl(var(--accent) / 0.5);
+        }
+        50% {
+            opacity: 0.7;
+            transform: scale(1.15);
+            box-shadow: 0 0 0 4px hsl(var(--accent) / 0);
+        }
+    }
+
+    /* ⭐ Lime accent glow — the signature highlight for active/running states.
+       A tight ring + soft outer bloom; used sparingly on CTAs, active nav,
+       running dots, and the Send button. */
+    .accent-glow {
+        box-shadow: 0 0 0 1px hsl(var(--accent) / 0.3),
+            0 0 14px -2px hsl(var(--accent) / 0.45);
+    }
+    .accent-glow-strong {
+        box-shadow: 0 0 0 1px hsl(var(--accent) / 0.4),
+            0 0 22px -2px hsl(var(--accent) / 0.6);
+    }
+
+    /* Subtle hover lift for cards / list items. */
+    .lift-on-hover {
+        transition:
+            transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+            border-color 0.2s ease,
+            background-color 0.2s ease;
+    }
+    .lift-on-hover:hover {
+        transform: translateY(-1px);
+    }
+
+    /* Streaming typing cursor — a blinking lime block at the text tail. */
+    .typing-cursor::after {
+        content: "▋";
+        margin-left: 1px;
+        color: hsl(var(--accent));
+        animation: blink 1s step-end infinite;
+    }
+    @keyframes blink {
+        50% {
+            opacity: 0;
+        }
+    }
+
+    /* Keyboard focus ring — consistent visible focus for accessibility. */
+    .focus-ring {
+        outline: none;
+        box-shadow: 0 0 0 2px hsl(var(--background)),
+            0 0 0 4px hsl(var(--accent) / 0.5);
+    }
+
+    /* role dot helpers */
+    .dot-teamleader {
+        background: hsl(var(--role-teamleader));
+    }
+    .dot-researcher {
+        background: hsl(var(--role-researcher));
+    }
+    .dot-coder {
+        background: hsl(var(--role-coder));
+    }
+    .dot-user {
+        background: hsl(var(--role-user));
+    }
+    .dot-system {
+        background: hsl(var(--role-system));
+    }
 }

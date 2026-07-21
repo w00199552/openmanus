@@ -4,7 +4,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { TopNav } from "@/components/top-nav";
 import { SessionList } from "@/views/session-list";
 import { ChatPane } from "@/views/chat-pane";
-import { Playground } from "@/views/playground";
+import { PlaygroundShell } from "@/components/playground/playground-shell";
 import { AgentsView } from "@/views/agents-view";
 import { SkillsView } from "@/views/skills-view";
 import { ToolsView } from "@/views/tools-view";
@@ -113,7 +113,7 @@ export const Workspace = observer(function Workspace() {
                                 <SessionList />
                             </Panel>
                             <Separator className="sep-bar relative w-1.5 cursor-col-resize">
-                                <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
+                                <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2" />
                             </Separator>
                             <Panel id="chat" minSize="30%">
                                 <ChatPane />
@@ -122,12 +122,12 @@ export const Workspace = observer(function Workspace() {
                     </Panel>
 
                     <Separator className="sep-bar relative w-1.5 cursor-col-resize">
-                        <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
+                        <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2" />
                     </Separator>
 
-                    {/* ── RIGHT HALF: sandbox | playground ───────────────────────── */}
+                    {/* ── RIGHT HALF: playground shell (Sandbox / Preview / Terminal) */}
                     <Panel id="right" defaultSize="50%" minSize="30%">
-                        <Playground />
+                        <PlaygroundShell />
                     </Panel>
                 </Group>
             )}

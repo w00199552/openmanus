@@ -1,4 +1,4 @@
-import { Settings, LogIn, Sparkles } from "lucide-react";
+import { Settings, LogIn } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { WindowControls } from "@/components/window-controls";
@@ -15,10 +15,15 @@ const NAV_ITEMS = [
 ];
 
 /**
- * TopNav — global navigation bar.
+ * TopNav — global navigation bar (devrajchatribin.com style).
  *
- * In Electron: the bar is draggable (app.css="-webkit-app-region: drag"),
- * double-click toggles maximize. Buttons inside have data-no-drag to opt out.
+ * Layout: 80px tall, transparent (no backdrop blur), borderless bottom.
+ * Logo in ClashDisplay on the left. Nav links centered with the signature
+ * double-layer slide + skew hover animation. Active state is pure color
+ * contrast (no underline, no dot) — restraint is the point.
+ *
+ * In Electron: the bar is draggable (appRegion: drag), double-click toggles
+ * maximize. Buttons inside opt out with appRegion: no-drag.
  */
 export function TopNav({ activeView = "chat", onNavigate }) {
     const handleDoubleClick = () => {
@@ -31,62 +36,51 @@ export function TopNav({ activeView = "chat", onNavigate }) {
         <header
             onDoubleClick={handleDoubleClick}
             style={{ appRegion: "drag" }}
-            className="relative flex h-11 shrink-0 items-center border-b border-border/60 px-3"
+            className="relative flex h-14 shrink-0 items-center px-6"
         >
-            {/* Logo (left) */}
+            {/* Logo (left) — ClashDisplay wordmark, pure text */}
             <button
                 onClick={() => onNavigate?.("chat")}
                 style={{ appRegion: "no-drag" }}
-                className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-semibold"
+                className="shrink-0 font-display text-xl font-medium tracking-tight text-foreground transition hover:opacity-80"
             >
-                <Sparkles className="size-3.5 text-accent" />
                 OpenManus
             </button>
 
             {/* Nav items (centered) */}
             <nav
                 style={{ appRegion: "no-drag" }}
-                className="absolute left-1/2 flex -translate-x-1/2 items-center gap-0.5"
+                className="absolute left-1/2 flex -translate-x-1/2 items-center gap-6"
             >
-                {NAV_ITEMS.map((item) => (
-                    <button
-                        key={item.key}
-                        onClick={() => item.active && onNavigate?.(item.key)}
-                        disabled={!item.active}
-                        className={cn(
-                            "relative rounded-md px-2.5 py-1 text-[13px] transition",
-                            activeView === item.key && item.active
-                                ? "text-foreground"
-                                : "text-muted-foreground hover:text-foreground/70",
-                            !item.active && "cursor-default opacity-50"
-                        )}
-                        title={
-                            item.active
-                                ? item.label
-                                : `${item.label} (coming soon)`
-                        }
-                    >
-                        {item.label}
-                        {activeView === item.key && item.active && (
-                            <span className="absolute -bottom-[9px] left-2 right-2 h-0.5 rounded-full bg-accent" />
-                        )}
-                    </button>
-                ))}
+                {NAV_ITEMS.map((item) => {
+                    const isActive = activeView === item.key && item.active;
+                    return (
+                        <NavLink
+                            key={item.key}
+                            label={item.label}
+                            active={isActive}
+                            disabled={!item.active}
+                            onClick={() =>
+                                item.active && onNavigate?.(item.key)
+                            }
+                        />
+                    );
+                })}
             </nav>
 
             {/* Right: settings + login + window controls */}
             <div
                 style={{ appRegion: "no-drag" }}
-                className="ml-auto flex items-center gap-1"
+                className="ml-auto flex items-center gap-2"
             >
                 <button
-                    className="rounded-md p-1.5 text-muted-foreground transition hover:bg-card hover:text-foreground"
+                    className="rounded-md p-2 text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground"
                     title="Settings"
                 >
                     <Settings className="size-4" />
                 </button>
                 <button
-                    className="flex items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1 text-[13px] text-foreground/80 transition hover:border-accent/40"
+                    className="flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1.5 text-[13px] text-foreground/80 transition hover:border-foreground/30 hover:text-foreground"
                     title="Sign in"
                 >
                     <LogIn className="size-3.5" />
@@ -95,5 +89,59 @@ export function TopNav({ activeView = "chat", onNavigate }) {
                 <WindowControls />
             </div>
         </header>
+    );
+}
+
+/**
+ * NavLink — a single nav link with the devraj double-layer slide animation.
+ *
+ * Two stacked copies of the label live inside an overflow-hidden span:
+ *   - Layer A sits in place by default; on hover it slides UP and OUT while
+ *     skewing, leaving the slot.
+ *   - Layer B waits below (translate-y-[110%] + skew); on hover it slides up
+ *     into place and un-skews. The handoff reads as the label rolling over.
+ * Both layers run on transform-gpu + 500ms for buttery motion.
+ *
+ * Active links render in bright foreground; inactive ones in muted gray.
+ * Pure color contrast — no underline, no dot (deliberate restraint).
+ */
+function NavLink({ label, active, disabled, onClick }) {
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            className={cn(
+                "group relative",
+                disabled && "cursor-default"
+            )}
+            title={disabled ? `${label} (coming soon)` : label}
+        >
+            <span
+                className={cn(
+                    "relative inline-flex items-center overflow-hidden text-sm",
+                    active
+                        ? "text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    disabled && "opacity-40"
+                )}
+            >
+                {/* Active indicator: a small lime dot to the LEFT of the label.
+                    Slides in alongside the text so the whole row animates as one. */}
+                {active && (
+                    <span className="mr-1.5 size-1.5 shrink-0 rounded-full bg-accent accent-glow" />
+                )}
+                <span className="relative inline-flex overflow-hidden">
+                    {/* Layer A: in place → slides up & skews out on hover */}
+                    <span className="translate-y-0 skew-y-0 transform-gpu transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-y-[110%] group-hover:skew-y-[12deg]">
+                        {label}
+                    </span>
+                    {/* Layer B: hidden below → slides into place & un-skews on hover.
+                        Brighter color so the rollover feels like a refresh. */}
+                    <span className="absolute translate-y-[110%] skew-y-[12deg] transform-gpu text-foreground transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:translate-y-0 group-hover:skew-y-0">
+                        {label}
+                    </span>
+                </span>
+            </span>
+        </button>
     );
 }

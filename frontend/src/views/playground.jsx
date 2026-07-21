@@ -26,6 +26,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { useStore } from "@/hooks/use-store";
 import { cn, joinAbsPath, copyText } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/sandbox/confirm-dialog";
+import { usePlaygroundToolbar } from "@/components/playground/playground-context";
 import {
     Popover,
     PopoverContent,
@@ -33,7 +34,8 @@ import {
 } from "@/components/ui/popover";
 
 /**
- * Playground — file tree + content editor for the Sandbox.
+ * SandboxTool — file tree + content editor for the Sandbox, hosted inside
+ * PlaygroundShell as one of several tools.
  *
  * All data operations are delegated to SandboxStore (workdir, cd, file CRUD).
  * This component is a thin render layer: it calls store methods and manages
@@ -42,9 +44,15 @@ import {
  * Tree: depth=1 on load (collapsed dirs); children are lazy-loaded on expand.
  * Right: file content (markdown editor / code viewer / text).
  * Live refresh: watchdog SSE via sandbox.watchUrl.
+ *
+ * The file-name + Save button live in the SHELL's toolbar (not here) — we
+ * `createPortal` them up to PlaygroundContext's toolbar slot so state stays
+ * local to this component while the toolbar stays visually unified.
  */
-export const Playground = observer(function Playground() {
+export const SandboxTool = observer(function SandboxTool() {
     const { sandbox } = useStore();
+    // DOM ref to the shell's toolbar-right slot — our actions portal there.
+    const toolbarRightRef = usePlaygroundToolbar();
     const [tree, setTree] = useState(null);
     const [expanded, setExpanded] = useState(new Set());
     // childrenByDir[path] = FileNode[] (lazy-loaded)
@@ -292,14 +300,13 @@ export const Playground = observer(function Playground() {
     }
 
     return (
-        <div className="flex h-full flex-col">
-            {/* toolbar */}
-            <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2">
-                <span className="text-[12px] font-medium text-muted-foreground">
-                    Sandbox
-                </span>
-                <div className="flex-1" />
-                {file && (
+        <>
+            {/* Portal the file-name + Save button into the shell's toolbar
+                right slot. State (file/dirty/saving) lives here; DOM lives
+                in the shell. Guard against ref being null on first paint. */}
+            {toolbarRightRef.current &&
+                file &&
+                createPortal(
                     <>
                         <span className="text-[11px] text-muted-foreground/60">
                             {file.name}
@@ -309,7 +316,7 @@ export const Playground = observer(function Playground() {
                             onClick={saveFile}
                             disabled={!dirty || saving}
                             className={cn(
-                                "flex items-center gap-1 rounded-md px-2 py-1 text-[12px] transition",
+                                "flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] transition",
                                 dirty
                                     ? "bg-accent/15 text-accent hover:bg-accent/25"
                                     : "text-muted-foreground/40 cursor-default"
@@ -322,12 +329,13 @@ export const Playground = observer(function Playground() {
                             )}
                             Save
                         </button>
-                    </>
+                    </>,
+                    toolbarRightRef.current
                 )}
-            </div>
 
-            {/* tree + content (resizable) */}
-            <Group orientation="horizontal" className="min-h-0 flex-1">
+            <div className="flex h-full flex-col">
+                {/* tree + content (resizable) */}
+                <Group orientation="horizontal" className="min-h-0 flex-1">
                 {/* file tree */}
                 <Panel
                     id="sandbox-tree"
@@ -342,7 +350,7 @@ export const Playground = observer(function Playground() {
                                 className="flex shrink-0 items-center gap-1.5 border-b border-border/40 px-3 py-1.5"
                                 title={sandbox.workdir}
                             >
-                                <FolderTree className="size-3.5 shrink-0 text-sky-400/70" />
+                                <FolderTree className="size-3.5 shrink-0 text-muted-foreground/60" />
                                 <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground/80">
                                     {sandbox.workdir}
                                 </span>
@@ -370,7 +378,7 @@ export const Playground = observer(function Playground() {
                                                     },
                                                 })
                                             }
-                                            className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-popover-foreground outline-none transition hover:bg-accent/15 hover:text-accent"
+                                            className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-popover-foreground outline-none transition hover:bg-foreground/8 hover:text-foreground"
                                         >
                                             <FilePlus className="size-3.5" />{" "}
                                             New File
@@ -386,7 +394,7 @@ export const Playground = observer(function Playground() {
                                                     },
                                                 })
                                             }
-                                            className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-popover-foreground outline-none transition hover:bg-accent/15 hover:text-accent"
+                                            className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-popover-foreground outline-none transition hover:bg-foreground/8 hover:text-foreground"
                                         >
                                             <FolderPlus className="size-3.5" />{" "}
                                             New Folder
@@ -414,7 +422,7 @@ export const Playground = observer(function Playground() {
                 </Panel>
 
                 <Separator className="sep-bar relative w-1.5 cursor-col-resize">
-                    <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60" />
+                    <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2" />
                 </Separator>
 
                 {/* content */}
@@ -470,7 +478,8 @@ export const Playground = observer(function Playground() {
                     }
                 />
             )}
-        </div>
+            </div>
+        </>
     );
 });
 
@@ -666,7 +675,7 @@ function MenuItem({ icon: Icon, label, onClick, danger }) {
                 "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-[13px] outline-none transition",
                 danger
                     ? "text-destructive hover:bg-destructive/10"
-                    : "text-popover-foreground hover:bg-accent/15 hover:text-accent"
+                    : "text-popover-foreground hover:bg-foreground/8 hover:text-foreground"
             )}
         >
             <Icon className="size-3.5" />
@@ -729,9 +738,9 @@ function TreeNode({
                             <ChevronRight className="size-3.5 shrink-0" />
                         )}
                         {isOpen ? (
-                            <FolderOpen className="size-3.5 shrink-0 text-sky-400/70" />
+                            <FolderOpen className="size-3.5 shrink-0 text-muted-foreground/60" />
                         ) : (
-                            <Folder className="size-3.5 shrink-0 text-sky-400/70" />
+                            <Folder className="size-3.5 shrink-0 text-muted-foreground/60" />
                         )}
                     </>
                 ) : (
@@ -761,7 +770,7 @@ function TreeNode({
 function FileIcon({ name }) {
     const ext = name.split(".").pop()?.toLowerCase();
     if (ext === "md")
-        return <FileText className="size-3.5 shrink-0 text-accent/60" />;
+        return <FileText className="size-3.5 shrink-0 text-muted-foreground/60" />;
     if (
         [
             "py",

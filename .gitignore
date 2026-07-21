@@ -26,6 +26,9 @@ shots/
 .logs/
 playwright-report/
 test-results/
+.playwright-cli/
+output/
+.zcode/
 
 # Agent-generated code artifacts (the agent writes these into the workdir when
 # running test tasks like "implement BFS"; they are NOT project source).

@@ -155,7 +155,7 @@ export function ChatInput({
                     </div>
                 )}
 
-                <div className="rounded-xl border border-border/60 bg-card px-2.5 py-2 transition focus-within:border-accent/40">
+                <div className="rounded-2xl border border-border/60 bg-card px-2.5 py-2 transition focus-within:border-accent/40 focus-within:shadow-[0_0_0_3px_hsl(var(--accent)/0.12)]">
                     {/* textarea */}
                     <textarea
                         ref={taRef}
@@ -203,7 +203,7 @@ export function ChatInput({
                                 <TooltipTrigger asChild>
                                     <button
                                         onClick={onStop}
-                                        className="flex size-7 items-center justify-center rounded-md bg-destructive/15 text-destructive transition hover:bg-destructive/25"
+                                        className="flex size-7 items-center justify-center rounded-full bg-destructive/15 text-destructive transition hover:bg-destructive/25"
                                     >
                                         <Square className="size-3.5" />
                                     </button>
@@ -217,9 +217,9 @@ export function ChatInput({
                                         onClick={submit}
                                         disabled={!value.trim()}
                                         className={cn(
-                                            "flex size-7 items-center justify-center rounded-md transition",
+                                            "flex size-7 items-center justify-center rounded-full transition",
                                             value.trim()
-                                                ? "bg-accent/15 text-accent hover:bg-accent/25"
+                                                ? "bg-accent text-accent-foreground accent-glow hover:bg-accent/90"
                                                 : "bg-muted/30 text-muted-foreground/40"
                                         )}
                                     >

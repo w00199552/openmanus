@@ -11,8 +11,7 @@ function createWindow() {
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    frame: false,          // 去掉默认白色标题栏
-    titleBarStyle: "hidden",
+    frame: false,          // 去掉默认白色标题栏(无边框窗口)
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -26,6 +25,17 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, "..", "frontend", "dist", "index.html"));
   }
+
+  // 当窗口最大化时,通知前端切换 CSS(未来扩展用,当前无实际效果)
+  const syncMaximized = () => {
+    const maximized = mainWindow?.isMaximized() || false;
+    mainWindow?.webContents.executeJavaScript(
+      `document.documentElement.dataset.maximized = ${maximized ? '"1"' : '""'};`
+    ).catch(() => {});
+  };
+  mainWindow.on("maximize", syncMaximized);
+  mainWindow.on("unmaximize", syncMaximized);
+  mainWindow.webContents.once("did-finish-load", syncMaximized);
 
   mainWindow.on("closed", () => {
     mainWindow = null;
