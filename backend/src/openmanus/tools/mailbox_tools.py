@@ -141,7 +141,6 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
             scope_id=scope_id,
             metadata={
                 "role": target_agent,
-                "allowed_tools": sorted(agent_loader.get(target_agent).get("allowed_tools", set())),
                 "parent": caller_session_id,
             },
         )

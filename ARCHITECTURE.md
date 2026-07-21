@@ -232,7 +232,7 @@ D:/OpenManus/
 
 三者都从 `~/.openmanus/` 加载:
 
-- `agent_loader` —— `agents/<Name>/{agent.yaml, prompt.md}`,`agent.yaml` 含 `name`/`description`/`tools`/`skills`/`strip_file_tools`/`sub_agents`/`allowed_tools`。`seed_builtin()` 首次复制 `backend/seed/agents/` 到此。
+- `agent_loader` —— `agents/<Name>/{agent.yaml, prompt.md}`,`agent.yaml` 含 `name`/`description`/`tools`/`skills`/`sub_agents`。`tools` 是**统一工具白名单**(deepagents 内置 + OpenManus 内置 + 用户自定义都列在这里);`seed_builtin()` 首次复制 `backend/seed/agents/` 到此。
 - `tool_loader` —— `tools/<name>/{tool.yaml, entry.py}`,用户自定义 Python 工具。
 - `skill_loader` —— `skills/<name>/SKILL.md`(可含 `scripts/` + `references/` + `assets/`)。
 

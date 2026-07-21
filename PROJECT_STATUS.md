@@ -10,6 +10,44 @@
 
 ## 0. 最新进展（2026-07-21)
 
+### 统一工具白名单(P0-1 完成)
+
+本次重构了 agent 的工具配置机制,落地了 `docs/coder-gap.md` §5.1 的 P0-1。
+
+**核心改动:工具配置统一成单个 `tools` 字段(白名单语义)**
+
+- **之前**:`agent.yaml` 有三个工具相关字段——`tools`(额外工具)、`allowed_tools`(白名单但未生效)、`strip_file_tools`(Manus 专用开关)。三者语义重叠且 `allowed_tools` 根本没接线,导致 Researcher 实际能调 `write_file`/`execute`(只读边界形同虚设)。
+- **之后**:只剩 `tools` 一个字段。它列出该 agent 能用的**所有**工具——不管是 deepagents 内置(`read_file`/`write_file`/`execute`/...)、OpenManus 内置(`dispatch`/`mailbox`/`whiteboard_*`)、还是用户自定义。`build_agent` 对 `tools` 里没列出的 deepagents 内置工具一律排除(双层防护:框架请求层过滤 + `ToolGuardMiddleware` 执行层硬拒)。
+- **删除字段**:`allowed_tools`、`strip_file_tools`(硬切换,不做向后兼容)。
+
+**四个内置 agent 的最终 `tools` 配置:**
+
+| Agent | tools | 含义 |
+|---|---|---|
+| Manus | `dispatch` | 纯路由,零文件工具 |
+| Researcher | `read_file, ls, glob, grep` | 真正只读(此前是假的) |
+| Coder | `read_file, write_file, edit_file, ls, glob, grep, execute` | 完整编码能力,无 `task` 子 agent(P1-3 再加) |
+| TeamLeader | `dispatch, send_message, read_mailbox, whiteboard_write, whiteboard_read` | 只协调,零文件工具 |
+
+**关键实现细节:**
+- `_BUILTIN_TOOLS = {write_todos, ls, read_file, write_file, edit_file, glob, grep, execute, task}`(deepagents 0.6.11 默认注入全集,`task` 因框架自动注入 general-purpose subagent 而默认存在)。
+- 新增纯函数 `_resolve_tool_whitelist(declared)` → `(kept, excluded, extras)`,把白名单拆成"保留的内置 / 排除的内置 / 待实例化的非内置"三分。`build_agent` 调用它,把 `excluded` 传给 `ToolGuardMiddleware`。
+- `ToolGuardMiddleware` **保留**(框架的 `_ToolExclusionMiddleware` 只在请求层过滤,挡不住模型幻觉调用;ToolGuard 做请求层 + 执行层双保险)。只是它的 `excluded` 参数来源变了——从 `strip_file_tools` 变成白名单差集。
+- 顺手修了 `agent_factory._build_tools` 里 `logger` 未定义的潜在 NameError(遇到未知工具名时会崩)。
+
+**改动文件:**
+- `backend/src/openmanus/agent_factory.py`(核心:`_BUILTIN_TOOLS` + `_resolve_tool_whitelist` + `build_agent` 白名单逻辑 + `logger` 定义)
+- `backend/src/openmanus/agent_loader.py`(`load_all`/`create` 删两个字段)
+- `backend/src/openmanus/api/agents.py`(`AgentSummary`/`AgentDetail` 删两个字段 + 序列化点)
+- `backend/src/openmanus/tools/mailbox_tools.py`(dispatch metadata 删 `allowed_tools`)
+- `backend/seed/agents/{Manus,Coder,Researcher,TeamLeader}/agent.yaml`(重写,统一用 `tools`)
+- `frontend/src/views/agents-view.jsx`(删 `strip_file_tools` 徽章 + `allowed_tools` 兜底文案)
+- `backend/tests/test_build_agent_tools.py`(新增,两层断言:纯函数 + 集成,全绿)
+
+**⚠️ 已部署用户升级注意:**`~/.openmanus/agents/` 里的老副本仍是旧格式(带 `allowed_tools`/`strip_file_tools`)。`load_all` 用 `raw.get(...)` 是宽容的,残留字段不会报错,但 `strip_file_tools` 不再被读 → **Manus 会突然拿到所有文件工具**。升级前请**删除 `~/.openmanus/agents/` 重新 seed**,或手动把每个 `agent.yaml` 改成新格式(把 `allowed_tools` 里的工具名并入 `tools`,删掉 `allowed_tools` 和 `strip_file_tools`)。
+
+---
+
 ### 文档体系重构 + 三层蓝图定稿
 
 本次会话完成了**项目方向对齐**与**文档体系全面更新**:
@@ -344,7 +382,8 @@ RootStore (stores/index.js)
 ~/.openmanus/
   agents/           — 每个 agent 一个目录
     Manus/
-      agent.yaml    — name, description, tools, skills, strip_file_tools
+      agent.yaml    — name, description, tools, skills, sub_agents
+                      (tools 是统一工具白名单:deepagents 内置 + OpenManus 内置 + 用户自定义)
       prompt.md     — 系统提示词（支持 {{AGENTS}} 占位符）
     TeamLeader/
     Coder/

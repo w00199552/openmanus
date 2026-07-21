@@ -1,14 +1,12 @@
-allowed_tools: []
 name: TeamLeader
 description: "Coordinates a team. Breaks down complex tasks and dispatches to specialists."
 prompt_file: prompt.md
-skills: []
-strip_file_tools: false
-sub_agents: []
 tools:
 - dispatch
 - send_message
 - read_mailbox
 - whiteboard_write
 - whiteboard_read
+skills: []
+sub_agents: []
 is_builtin: true

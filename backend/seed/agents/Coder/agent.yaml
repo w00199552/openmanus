@@ -1,17 +1,14 @@
-allowed_tools:
+name: Coder
+description: "Implements code changes. Can read, write, edit, and run files."
+prompt_file: prompt.md
+tools:
 - read_file
 - write_file
 - edit_file
-- list_directory
 - ls
 - glob
 - grep
 - execute
-name: Coder
-description: "Implements code changes. Can read, write, edit, and run files."
-prompt_file: prompt.md
 skills: []
-strip_file_tools: false
 sub_agents: []
-tools: []
 is_builtin: true

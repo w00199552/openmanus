@@ -12,12 +12,14 @@ The checkpointer is SHARED (one DB) but each run uses its own thread_id
 
 from __future__ import annotations
 
+import logging
+from typing import Any
+
 from deepagents import create_deep_agent
 from deepagents.backends import LocalShellBackend
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel
 from langgraph.graph.state import CompiledStateGraph
-from typing import Any
 
 from .agent_loader import agent_loader
 from .chat_model import ChatGLM
@@ -37,11 +39,26 @@ from .tools.whiteboard_tools import (
     make_whiteboard_write_tool,
 )
 
-# File tools that the pure-router (manus) must NOT have. Stripped via ToolGuard.
-_FILE_TOOLS = frozenset(
-    {"read_file", "write_file", "edit_file", "execute", "write_todos",
-     "list_directory", "ls", "glob", "grep", "task"}
+# Tools that deepagents injects by default (filesystem + execute + todos +
+# the general-purpose subagent `task`). These are NOT instantiated by us —
+# the framework registers them. We only decide which to KEEP via the agent's
+# `tools` whitelist; any builtin not whitelisted is excluded at both the
+# model-request layer (framework `_ToolExclusionMiddleware`) and the
+# tool-execution layer (our `ToolGuardMiddleware`, which also blocks
+# hallucinated calls).
+#
+# Source: deepagents 0.6.11 graph.py docstring + middleware/filesystem.py +
+# langchain TodoListMiddleware + middleware/subagents.py (`task`).
+# NOTE: `task` is injected by default (graph.py auto-adds a general-purpose
+# subagent). Excluding it here keeps the built-in agents minimal; when an
+# agent needs a synchronous sub-agent (ROADMAP P1-3), add `task` to its
+# `tools` whitelist.
+_BUILTIN_TOOLS = frozenset(
+    {"write_todos", "ls", "read_file", "write_file", "edit_file",
+     "glob", "grep", "execute", "task"}
 )
+
+logger = logging.getLogger(__name__)
 
 _default_model: BaseChatModel | None = None
 
@@ -100,11 +117,48 @@ def _resolve_scope_id(config: Any) -> str | None:
     return sid if sid != "unknown" else None
 
 
+def _resolve_tool_whitelist(declared: list[str] | set[str]) -> tuple[frozenset[str], frozenset[str], list[str]]:
+    """Split an agent's declared `tools` into builtin/extras partitions.
+
+    The `tools` field is a UNIFIED whitelist: it may contain deepagents
+    builtins (``read_file``, ``execute``, ...), OpenManus builtins
+    (``dispatch``, ``whiteboard_*``), and user-defined tools. This function
+    partitions them so ``build_agent`` knows:
+
+      * which builtins to KEEP (framework injects them, do not instantiate)
+      * which builtins to EXCLUDE (hide from model + block via ToolGuard)
+      * which NON-builtin names to pass to ``_build_tools`` for instantiation
+
+    Args:
+        declared: the agent's ``tools`` list/set from agent.yaml.
+
+    Returns:
+        ``(builtin_kept, builtin_excluded, extra_tool_names)`` where:
+          - ``builtin_kept``    = builtins the agent DOES want (subset of
+                                  ``_BUILTIN_TOOLS``)
+          - ``builtin_excluded``= builtins to strip (``_BUILTIN_TOOLS -
+                                  builtin_kept``)
+          - ``extra_tool_names``= non-builtin names, sorted, for
+                                  ``_build_tools``
+    """
+    declared_set = set(declared)
+    builtin_kept = declared_set & _BUILTIN_TOOLS
+    builtin_excluded = _BUILTIN_TOOLS - builtin_kept
+    extra_tool_names = sorted(declared_set - _BUILTIN_TOOLS)
+    return frozenset(builtin_kept), frozenset(builtin_excluded), extra_tool_names
+
+
 def _build_tools(tool_names: list[str], workdir: str, agent_name: str = "") -> list:
-    """Instantiate the extra tools listed in an agent's config.
+    """Instantiate the NON-builtin tools listed in an agent's `tools` whitelist.
+
+    deepagents built-in tools (``_BUILTIN_TOOLS``) are injected by the
+    framework and must NOT be passed here — they're handled by the whitelist
+    keep/exclude logic in ``build_agent``. This function only resolves names
+    that are NOT builtins:
 
     Resolution order per name:
-      1. Built-in factory (dispatch / send_message / read_mailbox / whiteboard_*)
+      1. OpenManus built-in factory (dispatch / send_message / read_mailbox /
+         whiteboard_*)
       2. User-defined tool from tool_loader (~/.openmanus/tools/)
     """
     tools: list = []
@@ -188,8 +242,15 @@ async def build_agent(session_id: str) -> CompiledStateGraph:
     cfg = agent_loader.get(name)
     if not cfg:
         raise ValueError(f"Unknown agent name: {name!r}. Available: {agent_loader.all_names()}")
-    tools = _build_tools(cfg.get("tools", []), workdir, agent_name=name)
-    excluded = _FILE_TOOLS if cfg.get("strip_file_tools") else frozenset({"task"})
+
+    # Unified tool whitelist. An agent's `tools` list declares EVERYTHING it
+    # can use — deepagents builtins, OpenManus builtins, and user tools alike.
+    #   - builtins listed here  → kept (framework injects them)
+    #   - builtins NOT here     → excluded (framework hides them AND
+    #                             ToolGuardMiddleware blocks hallucinated calls)
+    #   - non-builtins here     → instantiated by _build_tools below
+    _kept, excluded, extra_tool_names = _resolve_tool_whitelist(cfg.get("tools", []))
+    tools = _build_tools(extra_tool_names, workdir, agent_name=name)
 
     # Build backend: CompositeBackend routes /skills/ to read-only, everything
     # else to the working directory (read-write).

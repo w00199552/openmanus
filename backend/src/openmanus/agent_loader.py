@@ -1,8 +1,14 @@
 """AgentLoader — loads agent definitions from ~/.openmanus/agents/ (YAML + prompt.md).
 
 Each agent is a subdirectory containing:
-  - agent.yaml : configuration (name, tools, flags, ...)
+  - agent.yaml : configuration (name, description, tools, skills, sub_agents,
+                 is_builtin)
   - prompt.md  : system prompt (markdown, loaded as the system_prompt string)
+
+`tools` is the UNIFIED tool whitelist — it lists everything the agent may use:
+deepagents builtins (read_file/write_file/execute/...), OpenManus builtins
+(dispatch/mailbox/whiteboard_*), and user-defined tools (~/.openmanus/tools/).
+Any deepagents builtin NOT listed here is excluded at build time.
 
 On startup, main.py calls seed_builtin() (first-run only) then load_all().
 seed_builtin() copies the seed/agents/ directory (bundled with the app) to
@@ -90,8 +96,6 @@ class AgentLoader:
                     "tools": raw.get("tools", []),
                     "skills": raw.get("skills", []),
                     "sub_agents": raw.get("sub_agents", []),
-                    "strip_file_tools": raw.get("strip_file_tools", False),
-                    "allowed_tools": set(raw.get("allowed_tools", [])),
                     "is_builtin": raw.get("is_builtin", False),
                 }
                 self._configs[name] = cfg
@@ -202,8 +206,6 @@ class AgentLoader:
             "tools": tools,
             "skills": [],
             "sub_agents": [],
-            "strip_file_tools": False,
-            "allowed_tools": [],
             "is_builtin": False,
         }
         (d / "agent.yaml").write_text(
@@ -215,8 +217,6 @@ class AgentLoader:
             "tools": tools,
             "skills": [],
             "sub_agents": [],
-            "strip_file_tools": False,
-            "allowed_tools": set(),
         }
         logger.info("created agent: %s", name)
         return self._configs[name]

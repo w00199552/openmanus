@@ -82,6 +82,8 @@ opencode coder 内置 11 个工具 + (有 LSP 时)diagnostics + 动态 MCP。dee
 
 > **Coder 的 `agent.yaml` 里 `allowed_tools` 字段没有被 `build_agent` 链路使用。**
 
+> ✅ **已修复(2026-07-21,P0-1 落地)。** 实际实现比原设计更进一步:不再保留 `allowed_tools` + `tools` 两个字段,而是**合并成单个 `tools` 白名单**(deepagents 内置 + OpenManus 内置 + 用户自定义都列在这里)。同时删除 `strip_file_tools`,Manus 的"无文件工具"也走同一套白名单逻辑。详见 §5.1 P0-1 的已完成标注。原 bug 描述保留如下,作为历史脉络。
+
 代码核对结论(`agent_factory.py`):
 - `allowed_tools` 在 `agent_loader.py` 加载、在 `api/agents.py` CRUD、在 `mailbox_tools.py` 展示给 Manus 看
 - **但 `build_agent` 完全没用 `allowed_tools` 裁剪工具** —— 它只用了 `tools`(额外工具)+ `strip_file_tools`(Manus 专用硬剥)
@@ -126,7 +128,9 @@ opencode coder 内置 11 个工具 + (有 LSP 时)diagnostics + 动态 MCP。dee
 
 > **P0 原为三项,核对 deepagents 源码后收缩为两项**:原 P0-3("先读再改"约束)作废 —— 框架 `edit_file` 已自带该约束(`filesystem.py` L437:"This tool will error if you attempt an edit without reading the file first")。
 
-#### P0-1 · 修复 `allowed_tools` 生效
+#### P0-1 · 修复 `allowed_tools` 生效  ✅ 已完成(2026-07-21)
+
+> **实现与原设计的差异(重要):** 原设计是让 `allowed_tools` 真正生效、保留 `tools`+`allowed_tools` 两个字段。实际落地时,经讨论改为**合并成单个 `tools` 字段**——所有工具(deepagents 内置 / OpenManus 内置 / 用户自定义)都在 `tools` 里白名单声明,`build_agent` 对未声明的内置工具一律排除。这比原设计更干净(消除字段语义重叠),也顺带删除了 `strip_file_tools`(Manus 改用同一套白名单逻辑)。详见 `PROJECT_STATUS.md` §0 "统一工具白名单" 一节。
 
 **目标**:`allowed_tools` 字段在 `build_agent` 链路真正裁剪工具,实现按角色限定工具集。
 
@@ -186,8 +190,8 @@ opencode coder 内置 11 个工具 + (有 LSP 时)diagnostics + 动态 MCP。dee
 
 **改动文件**:
 - `backend/src/openmanus/tools/fetch_tool.py`(新建)
-- 在 `agent_factory._build_tools` 里注册(或作为内置工具,按 `allowed_tools` 是否包含 `fetch` 决定)
-- Coder 的 `agent.yaml` 的 `allowed_tools` 加 `fetch`
+- 在 `agent_factory._build_tools` 里注册(作为非内置工具,按 `tools` 是否包含 `fetch` 决定)
+- Coder 的 `agent.yaml` 的 `tools` 加 `fetch`
 
 **注意**:要走 permission 审批(P2 启用后)。
 
@@ -253,7 +257,7 @@ P0/P1 改动要确保**不破坏这些优势**(尤其加同步 task subagent 时
 
 ```
 M1 编码质量基线(当前)
-  ├─ P0-1 修 allowed_tools 生效          ← 基础设施,最先
+  ├─ P0-1 修 allowed_tools 生效          ← ✅ 已完成(合并成单个 tools 白名单)
   ├─ P0-2 重写 Coder prompt              ← 可与 P0-1 并行
   └─ 验证:Coder 真实任务质量提升,工具边界正确
   (原 P0-3 先读约束作废 —— 框架 edit_file 自带)
