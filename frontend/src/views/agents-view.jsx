@@ -219,7 +219,7 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
 
             {/* right content */}
             <div className="min-h-0 flex-1 overflow-hidden">
-                <div className="mx-auto flex h-full w-full max-w-2xl flex-col px-8 py-8">
+                <div className="flex h-full w-full flex-col px-8 py-8">
                     {tab === "info" && (
                         <div className="space-y-4">
                             <div>
@@ -668,7 +668,7 @@ const CreateAgent = observer(function CreateAgent({ onBack, onCreated }) {
 
             {/* right content */}
             <div className="min-h-0 flex-1 overflow-hidden">
-                <div className="mx-auto flex h-full w-full max-w-2xl flex-col px-8 py-8">
+                <div className="flex h-full w-full flex-col px-8 py-8">
                     {tab === "info" && (
                         <div className="space-y-4">
                             <h2 className="text-sm font-medium">Agent Info</h2>
