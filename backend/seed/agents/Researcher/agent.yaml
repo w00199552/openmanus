@@ -6,6 +6,8 @@ tools:
 - ls
 - glob
 - grep
+- whiteboard_read
+- whiteboard_write
 skills: []
 sub_agents: []
 is_builtin: true
