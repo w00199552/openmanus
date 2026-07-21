@@ -126,8 +126,6 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
 
     if (s.loading || !s.current) return <Centered>Loading…</Centered>;
 
-    const isBuiltin = s.current.is_builtin || false;
-
     return (
         <div className="flex h-full">
             {s.toast && <Toast {...s.toast} />}
@@ -201,22 +199,14 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
                 </div>
 
                 <div className="mt-auto p-3">
-                    {!isBuiltin && (
-                        <button
-                            onClick={() => s.save()}
-                            disabled={s.saving}
-                            className="flex w-full items-center justify-center gap-1.5 rounded-full bg-accent/15 px-3 py-2 text-[13px] text-accent transition hover:bg-accent/25 disabled:opacity-50"
-                        >
-                            <Save className="size-3.5" />
-                            {s.saving ? "Saving…" : "Save"}
-                        </button>
-                    )}
-                    {isBuiltin && (
-                        <div className="flex items-center justify-center gap-1.5 px-3 py-2 text-[12px] text-muted-foreground/50">
-                            <Lock className="size-3" />
-                            Built-in (read-only)
-                        </div>
-                    )}
+                    <button
+                        onClick={() => s.save()}
+                        disabled={s.saving}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-full bg-accent/15 px-3 py-2 text-[13px] text-accent transition hover:bg-accent/25 disabled:opacity-50"
+                    >
+                        <Save className="size-3.5" />
+                        {s.saving ? "Saving…" : "Save"}
+                    </button>
                 </div>
             </div>
 
@@ -240,13 +230,8 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
                                 <textarea
                                     value={s.descriptionDraft}
                                     onChange={(e) =>
-                                        isBuiltin
-                                            ? null
-                                            : s.setDescriptionDraft(
-                                                  e.target.value
-                                              )
+                                        s.setDescriptionDraft(e.target.value)
                                     }
-                                    readOnly={isBuiltin}
                                     placeholder="Describe what this agent does and when to use it..."
                                     className="min-h-[80px] w-full resize-y rounded-lg border border-border/60 bg-sidebar/30 px-3 py-2 text-[13px] outline-none focus:border-accent/40"
                                 />
@@ -266,17 +251,13 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
                             <div className="min-h-0 flex-1">
                                 <MDEditor
                                     value={s.promptDraft}
-                                    onChange={
-                                        isBuiltin
-                                            ? undefined
-                                            : (val) =>
-                                                  s.setPromptDraft(val || "")
+                                    onChange={(val) =>
+                                        s.setPromptDraft(val || "")
                                     }
                                     height="100%"
                                     preview="live"
                                     data-color-mode={colorMode}
                                     style={{ height: "100%" }}
-                                    readOnly={isBuiltin}
                                 />
                             </div>
                         </div>
@@ -296,24 +277,12 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
                                     return (
                                         <button
                                             key={tool.name}
-                                            onClick={
-                                                isBuiltin
-                                                    ? undefined
-                                                    : () =>
-                                                          s.toggleTool(
-                                                              tool.name
-                                                          )
-                                            }
-                                            disabled={isBuiltin}
+                                            onClick={() => s.toggleTool(tool.name)}
                                             className={cn(
-                                                "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
+                                                "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition hover:border-border/80",
                                                 checked
                                                     ? "border-accent/30 bg-accent/5"
-                                                    : "border-border/40",
-                                                !isBuiltin &&
-                                                    "hover:border-border/80",
-                                                isBuiltin &&
-                                                    "cursor-default opacity-60"
+                                                    : "border-border/40"
                                             )}
                                         >
                                             <div
@@ -378,24 +347,12 @@ const AgentDetail = observer(function AgentDetail({ name, onBack }) {
                                         return (
                                             <button
                                                 key={skill.name}
-                                                onClick={
-                                                    isBuiltin
-                                                        ? undefined
-                                                        : () =>
-                                                              s.toggleSkill(
-                                                                  skill.name
-                                                              )
-                                                }
-                                                disabled={isBuiltin}
+                                                onClick={() => s.toggleSkill(skill.name)}
                                                 className={cn(
-                                                    "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
+                                                    "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition hover:border-border/80",
                                                     checked
                                                         ? "border-accent/30 bg-accent/5"
-                                                        : "border-border/40",
-                                                    !isBuiltin &&
-                                                        "hover:border-border/80",
-                                                    isBuiltin &&
-                                                        "cursor-default opacity-60"
+                                                        : "border-border/40"
                                                 )}
                                             >
                                                 <div
@@ -481,9 +438,6 @@ function AgentCard({ agent, onClick }) {
                             <Lock className="size-3 shrink-0 text-muted-foreground/50" />
                         )}
                     </div>
-                    <div className="mt-0.5 flex gap-1">
-                        {agent.strip_file_tools && <Badge>no files</Badge>}
-                    </div>
                 </div>
             </div>
             {agent.description && (
@@ -500,7 +454,7 @@ function AgentCard({ agent, onClick }) {
                         </span>
                     </>
                 ) : (
-                    <span>{agent.allowed_tools.length} file tools</span>
+                    <span>no tools</span>
                 )}
             </div>
         </button>
@@ -532,21 +486,6 @@ function TabBtn({ active, onClick, icon, children }) {
             {icon}
             {children}
         </button>
-    );
-}
-
-function Badge({ children, color }) {
-    return (
-        <span
-            className={cn(
-                "rounded-sm px-1.5 py-0.5 text-[9px]",
-                color === "accent"
-                    ? "bg-accent/15 text-accent"
-                    : "bg-muted/30 text-muted-foreground"
-            )}
-        >
-            {children}
-        </span>
     );
 }
 

@@ -21,7 +21,11 @@ echo.
 
 REM --- 1. backend (Python, :8999) ---
 echo [openmanus] starting backend...
-start "openmanus-backend" /D "%ROOT%backend" cmd /c "uv run uvicorn openmanus.main:app --port 8999"
+REM Use `python -m uvicorn` instead of the `uvicorn` entry-point script.
+REM uv 0.11.24 on Windows has a trampoline bug ("uv trampoline failed to
+REM canonicalize script path") that breaks `uv run uvicorn`. The module form
+REM is equivalent and sidesteps the broken trampoline.
+start "openmanus-backend" /D "%ROOT%backend" cmd /c "uv run python -m uvicorn openmanus.main:app --port 8999"
 
 REM Wait for backend health check (max 30 retries = 30 seconds)
 set RETRIES=0
