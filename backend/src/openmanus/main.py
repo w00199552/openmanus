@@ -37,7 +37,7 @@ from .agent_loader import agent_loader
 from .api import agents, files, sessions, skills, streams, tools
 from .api.sessions import workdir_router
 from .config import settings
-from .db import init_db, session_store
+from .db import init_db, session_store, topic_store
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,11 +68,10 @@ async def lifespan(app: FastAPI):
                      len(skill_loader.all_names()), skill_loader.dir, skill_loader.all_names())
 
     await init_db()
-    # Seed the singleton Manus entry session (idempotent; migrates legacy "default").
-    manus_session = await session_store.ensure_manus()
-    # Restore workdir from last session (so Sandbox shows the right dir on startup)
-    if manus_session and manus_session.get("workdir"):
-        settings.workdir = manus_session["workdir"]
+    # Ensure the permanent "main" topic exists (entry agent's default home).
+    main_topic = await topic_store.ensure_main()
+    if main_topic and main_topic.get("workdir"):
+        settings.workdir = main_topic["workdir"]
     logger.info(
         "openmanus ready | model=%s base=%s workdir=%s db=%s",
         settings.model, settings.openai_base_url, settings.workdir, settings.database_url,

@@ -102,16 +102,43 @@ def _build_backend(workdir: str) -> LocalShellBackend:
     return LocalShellBackend(root_dir=workdir, virtual_mode=True, inherit_env=True)
 
 
+def compute_thread_id(topic_id: str, agent_name: str) -> str:
+    """Compute the LangGraph checkpointer thread_id from topic + agent.
+
+    thread_id = ``f"{topic_id}:{agent_name}"``. This is the memory-chain key:
+    the same agent in the same topic shares a thread across multiple sessions
+    (multiple executions), giving it memory continuity. Different topics or
+    different agents get different threads (full isolation).
+
+    Not stored in the DB — computed on the fly in build_agent / engine.
+    """
+    return f"{topic_id}:{agent_name}"
+
+
 def _resolve_session_id(config: Any) -> str:
+    """Extract the current session_id from a RunnableConfig.
+
+    Phase 1 change: reads ``config["configurable"]["session_id"]`` instead of
+    the old ``thread_id`` (which used to equal session_id). Now that session_id
+    and thread_id are separate, tools must read session_id explicitly.
+    """
     try:
-        return ((config or {}).get("configurable") or {}).get("thread_id") or "unknown"
+        return ((config or {}).get("configurable") or {}).get("session_id") or "unknown"
     except Exception:  # noqa: BLE001
         return "unknown"
 
 
-def _resolve_scope_id(config: Any) -> str | None:
-    sid = _resolve_session_id(config)
-    return sid if sid != "unknown" else None
+def _resolve_topic_id(config: Any) -> str | None:
+    """Extract the current topic_id from a RunnableConfig.
+
+    Phase 1 change: renamed from _resolve_scope_id; reads
+    ``config["configurable"]["topic_id"]``.
+    """
+    try:
+        tid = ((config or {}).get("configurable") or {}).get("topic_id")
+        return tid if tid else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _resolve_tool_whitelist(declared: list[str] | set[str]) -> tuple[frozenset[str], frozenset[str], list[str]]:
@@ -169,10 +196,10 @@ def _build_tools(tool_names: list[str], workdir: str, agent_name: str = "") -> l
             tools.append(make_read_mailbox_tool())
         elif tname == "whiteboard_write":
             tools.append(make_whiteboard_write_tool(
-                session_id_fn=_resolve_session_id, scope_id_fn=_resolve_scope_id,
+                session_id_fn=_resolve_session_id, scope_id_fn=_resolve_topic_id,
             ))
         elif tname == "whiteboard_read":
-            tools.append(make_whiteboard_read_tool(scope_id_fn=_resolve_scope_id))
+            tools.append(make_whiteboard_read_tool(scope_id_fn=_resolve_topic_id))
         else:
             # 2. user-defined tool (from ~/.openmanus/tools/)
             user_tool = tool_loader.get(tname)
@@ -210,9 +237,13 @@ def _resolve_prompt(raw_prompt: str, self_name: str) -> str:
 async def build_agent(session_id: str) -> CompiledStateGraph:
     """Create a FRESH, independent agent for a session.
 
-    Reads the session's name + workdir from the DB, then builds a new
-    CompiledStateGraph with its OWN checkpointer (own aiosqlite connection,
-    same DB file, isolated by thread_id=session_id).
+    Reads the session's name + workdir + topic_id from the DB, then builds a
+    new CompiledStateGraph with its OWN checkpointer.
+
+    thread_id (checkpointer key) is computed as ``f"{topic_id}:{name}"`` via
+    :func:`compute_thread_id`. The engine constructs the LangGraph config with
+    this thread_id (phase 2). This function reads topic_id from the session
+    row so the caller (engine) can compute thread_id without an extra DB query.
 
     Agent instances are NOT cached — every call creates a new one. The
     checkpointer persists conversation history in the DB, so rebuilding
