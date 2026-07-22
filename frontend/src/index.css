@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
 
 /* Enable Tailwind v4 `dark:` variant on a class-based strategy. The toggle
    adds/removes `.dark` on <html> (see use-theme.js). Without this, v4 defaults
@@ -8,9 +9,7 @@
 /* ── Fonts: Satoshi (body) + ClashDisplay (display) + JetBrains Mono (code) ──
    Satoshi & ClashDisplay are self-hosted (Fontshare, free license) so the
    Electron desktop build works fully offline. JetBrains Mono stays via
-   @fontsource-variable for code/agent output. All @import statements must
-   precede other rules per PostCSS. */
-@import "@fontsource-variable/jetbrains-mono/wght.css";
+   @fontsource-variable for code/agent output. */
 
 @font-face {
     font-family: "Satoshi";
