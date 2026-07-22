@@ -50,9 +50,15 @@ class AgentLoader:
         return self._dir
 
     def seed_builtin(self) -> None:
-        """Copy seed/agents/ to ~/.openmanus/agents/ on first run.
+        """Seed built-in agents from seed/agents/ into ~/.openmanus/agents/.
 
-        Does NOT overwrite existing agents (user modifications are preserved).
+        Seeding is idempotent and non-destructive:
+          * If an agent directory is missing entirely → copy the whole seed dir.
+          * If the directory exists but a required seed file is missing
+            (e.g. the user deleted prompt.md but kept agent.yaml) → copy just
+            the missing file. This fixes the "partial cleanup" failure mode
+            where the agent loads with an empty prompt.
+          * Existing files are NEVER overwritten — user modifications win.
         """
         if not _SEED_DIR.exists():
             logger.warning("seed dir %s not found — skipping seed", _SEED_DIR)
@@ -62,10 +68,23 @@ class AgentLoader:
             if not entry.is_dir():
                 continue
             target = self._dir / entry.name
-            if target.exists():
-                continue  # don't overwrite user modifications
-            shutil.copytree(entry, target)
-            logger.info("seeded agent: %s", entry.name)
+            if not target.exists():
+                # Fresh agent — copy the whole seed directory.
+                shutil.copytree(entry, target)
+                logger.info("seeded agent: %s", entry.name)
+                continue
+            # Directory exists — backfill any missing seed files one by one.
+            # Don't touch files that already exist (user may have edited them).
+            for seed_file in entry.iterdir():
+                if seed_file.is_dir():
+                    continue  # nested dirs (rare for seeds) skipped for simplicity
+                user_file = target / seed_file.name
+                if not user_file.exists():
+                    shutil.copy2(seed_file, user_file)
+                    logger.info(
+                        "seeded missing file %s for agent %s (partial cleanup recovery)",
+                        seed_file.name, entry.name,
+                    )
 
     def load_all(self) -> dict[str, dict[str, Any]]:
         """Scan the agents directory and load every agent definition."""
