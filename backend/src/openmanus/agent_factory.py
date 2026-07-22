@@ -29,11 +29,8 @@ from .middleware.agent_trace import AgentTraceMiddleware
 from .middleware.tool_guard import ToolGuardMiddleware
 from .store import get_checkpointer
 from .tool_loader import tool_loader
-from .tools.mailbox_tools import (
-    make_dispatch_tool,
-    make_read_mailbox_tool,
-    make_send_message_tool,
-)
+from .tools.dispatch_tool import make_dispatch_tool
+from .tools.mailbox_tools import make_read_mailbox_tool, make_send_message_tool
 from .tools.whiteboard_tools import (
     make_whiteboard_read_tool,
     make_whiteboard_write_tool,

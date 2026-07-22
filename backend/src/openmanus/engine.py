@@ -263,15 +263,17 @@ class StreamEngine:
         astream finishes (no concurrent astreams → no cross-talk). When done,
         it writes the result to the whiteboard + sends the caller a mailbox
         "result" message. The caller picks that up on its NEXT turn.
+
+        NOTE: dispatch and mailbox are SEPARATE concerns. Dispatch is a control
+        flow (create child session + run it with a Task prompt); mailbox is for
+        peer-to-peer chat (send_message / read_mailbox tools). We deliberately
+        do NOT mailbox.send a "dispatch" message to the child here — doing so
+        would trigger _wakeup on the idle child and start a duplicate inbox
+        turn ("You received these messages: [dispatch]...") alongside the
+        Task-prompt turn from _start_and_record. The child's sole input is the
+        Task prompt built below.
         """
         from .tools.roles import role_prompt  # lazy: avoid import cycle
-
-        await mailbox_store.send(
-            to_session_id=target_session_id,
-            from_session_id=caller_session_id,
-            kind="dispatch",
-            content=task,
-        )
 
         prompt = f"{role_prompt(target_agent)}\n\nTask:\n{task}"
 

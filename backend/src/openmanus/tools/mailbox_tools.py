@@ -1,27 +1,27 @@
-"""Mailbox tools: agent-to-agent messaging + the unified dispatch tool.
+"""Mailbox tools — agent-to-agent peer messaging.
 
-ONE dispatch tool handles both cases:
-  - target_agent="TeamLeader" → create a team session + run a fresh TeamLeader
-  - target_agent="Coder"/"Researcher" → create a session + run a fresh agent
+These are the COMMUNICATION tools: send_message / read_mailbox. They let agents
+that are already running chat with each other (typically inside a team — e.g.
+TeamLeader pinging a specialist, or two specialists coordinating).
 
-Each dispatch builds a BRAND-NEW agent instance (build_agent) — never reuses a
-graph. This keeps every agent's run fully isolated (the cross-talk fix).
-
-Manus only has this one dispatch tool (no separate dispatch_to_team).
-TeamLeader also has send_message / read_mailbox / whiteboard tools.
+This module is intentionally NARROW — it does NOT contain the dispatch tool.
+Dispatch (creating a child session + starting it with a Task prompt) is a
+separate control-flow concern, living in ``dispatch_tool.py``. The two used to
+share this file, which caused a coupling bug: dispatch sent a mailbox message
+that triggered _wakeup on the child and started a duplicate turn. They are now
+split so each has a single responsibility.
 """
 
 from __future__ import annotations
 
 import logging
+from typing import Annotated, Any
+
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langchain_core.tools.base import InjectedToolArg
 from pydantic import BaseModel, Field
-from typing import Annotated, Any
 
-from ..agent_loader import agent_loader
-from ..db import session_store
 from ..mailbox import mailbox_store
 
 logger = logging.getLogger(__name__)
@@ -29,139 +29,6 @@ logger = logging.getLogger(__name__)
 
 def _config_session_id(config: RunnableConfig | None) -> str:
     return ((config or {}).get("configurable") or {}).get("thread_id") or "unknown"
-
-
-class DispatchInput(BaseModel):
-    target_agent: str = Field(
-        description=(
-            "Name of the agent to delegate to. Available agents are listed in "
-            "this tool's description. Use the exact name."
-        )
-    )
-    task: str = Field(
-        description=(
-            "The full task to hand off. Be detailed — this is the only context "
-            "the agent receives. Include goals, file paths, constraints."
-        )
-    )
-
-
-def _build_agent_registry() -> str:
-    """Build a human-readable list of available agents from agent_loader.
-
-    Includes each agent's name + description, so the LLM knows exactly who it
-    can dispatch to. Called at tool-construction time (once per agent build).
-    """
-    lines = []
-    for name in sorted(agent_loader.all_names()):
-        cfg = agent_loader.get(name) or {}
-        desc = cfg.get("description", "").strip()
-        if desc:
-            lines.append(f"  - {name}: {desc}")
-        else:
-            lines.append(f"  - {name}")
-    return "\n".join(lines)
-
-
-def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
-    """Build the unified dispatch tool.
-
-    Each dispatch creates a FRESH agent (build_agent) for the target role —
-    independent graph, isolated from the caller. The dispatched agent runs
-    AFTER the caller's astream finishes (deferred) — never concurrently.
-    Results come back via mailbox (the caller reads them on its next turn).
-    """
-
-    # Dynamically list available agents so the LLM knows who it can dispatch to.
-    agent_registry = _build_agent_registry()
-
-    async def dispatch(
-        target_agent: str,
-        task: str,
-        config: Annotated[RunnableConfig, InjectedToolArg] = None,  # type: ignore[assignment]
-    ) -> str:
-        """Delegate a task to another agent. Returns immediately; the agent
-        runs in the background. Check read_mailbox later for the result.
-
-        Available agents (use the exact name as target_agent):
-        """
-        if not agent_loader.get(target_agent):
-            return f"Unknown agent '{target_agent}'. Available: {', '.join(agent_loader.all_names())}."
-        from ..engine import engine  # lazy: avoid import cycle
-
-        caller_session_id = _config_session_id(config)
-        caller_row = await session_store.get(caller_session_id)
-        caller_scope = (caller_row or {}).get("scope_id")
-        # Inherit caller's workdir (supports /cd command — child works in the
-        # same directory as the caller, not the global settings.workdir).
-        caller_workdir = (caller_row or {}).get("workdir") or workdir
-
-        # ── TeamLeader: create a team session (scope root) ──
-        if target_agent.lower() == "teamleader":
-            team = await session_store.create(
-                kind="team",
-                name=target_agent,
-                title=task[:60] or "team task",
-                workdir=caller_workdir,
-                scope_id=None,
-                metadata={
-                    "parent": caller_session_id,
-                    "members": ["TeamLeader", "Researcher", "Coder"],
-                },
-            )
-            team_id = team["id"]
-            await session_store.update(team_id, status="running")
-            await engine.run(
-                session_id=team_id, prompt=task,
-                speaker=target_agent, mode="async",
-            )
-            await mailbox_store.send(
-                to_session_id=team_id, from_session_id=caller_session_id,
-                kind="dispatch", content=task,
-            )
-            return (
-                f"Delegated to team {team_id}. The team is working in the "
-                f"background. Tell the user they can open team {team_id[:12]}."
-            )
-
-        # ── specialist (Coder/Researcher): create a session ──
-        if caller_row and caller_row.get("kind") == "team":
-            scope_id = caller_session_id
-        else:
-            scope_id = caller_scope
-
-        # Specialists write directly into the caller's workdir — no per-agent
-        # subdirectory. This matches the TeamLeader branch and keeps all
-        # artifacts in one place unless the task itself requests otherwise.
-        child = await session_store.create(
-            kind="subagent",
-            name=target_agent,
-            title=task[:60] or f"{target_agent} task",
-            workdir=caller_workdir,
-            scope_id=scope_id,
-            metadata={
-                "role": target_agent,
-                "parent": caller_session_id,
-            },
-        )
-        child_id = child["id"]
-
-        await engine.start(
-            caller_session_id=caller_session_id,
-            target_agent=target_agent,
-            task=task,
-            scope_id=scope_id,
-            target_session_id=child_id,
-        )
-        return (
-            f"Delegated to {target_agent} (task {child_id[:12]}), running in the "
-            f"background. Use read_mailbox later to check the result."
-        )
-
-    # Inject the agent list into the docstring so the LLM sees all available agents.
-    dispatch.__doc__ = (dispatch.__doc__ or "") + agent_registry
-    # Wrap with @tool to register as a LangChain tool.
-    return tool("dispatch", args_schema=DispatchInput)(dispatch)
 
 
 def make_send_message_tool() -> BaseTool:
