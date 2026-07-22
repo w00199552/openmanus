@@ -354,6 +354,14 @@ class StreamEngine:
     async def _record_result(
         self, *, scope_id, target_session_id, caller_session_id, target_agent, answer,
     ):
+        # Entry agent (Manus, kind="root") is a pure router: it dispatches once
+        # and stops. It must NOT receive result mail — otherwise mailbox.send
+        # would trigger _wakeup → _start_turn_with_inbox and Manus would
+        # re-dispatch in a loop. The user watches the dispatched child session
+        # directly (session list shows child sessions like chat-app conversations).
+        caller = await session_store.get(caller_session_id)
+        if caller and caller.get("kind") == "root":
+            return
         if not scope_id:
             return
         try:
@@ -398,7 +406,10 @@ class StreamEngine:
                 lines.append(f"[{m['kind']}] from {sender}: {m.get('content','')} (whiteboard: {m['whiteboard_ref']})")
             else:
                 lines.append(f"[{m['kind']}] from {sender}: {m.get('content','')}")
-        prompt = "You received these messages:\n" + "\n".join(lines) + "\n\nReview and continue your work, or write a final summary if everything is done."
+        prompt = ("You received these messages:\n" + "\n".join(lines)
+                  + "\n\nRead them and decide: respond to the user, do more work, "
+                    "or stop. Do NOT re-dispatch a task that has already reported "
+                    "a result.")
         role = row.get("name") or "assistant"
         try:
             await self.run(
