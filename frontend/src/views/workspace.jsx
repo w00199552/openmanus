@@ -2,7 +2,7 @@ import { observer } from "mobx-react-lite";
 import { useEffect, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { TopNav } from "@/components/top-nav";
-import { SessionList } from "@/views/session-list";
+import { TopicList } from "@/views/topic-list";
 import { ChatPane } from "@/views/chat-pane";
 import { PlaygroundShell } from "@/components/playground/playground-shell";
 import { AgentsView } from "@/views/agents-view";
@@ -110,7 +110,7 @@ export const Workspace = observer(function Workspace() {
                             onLayoutChanged={(l) => setLeftLayout(l)}
                         >
                             <Panel id="list" minSize="10%" maxSize="45%">
-                                <SessionList />
+                                <TopicList />
                             </Panel>
                             <Separator className="sep-bar relative w-1.5 cursor-col-resize">
                                 <span className="sep-line pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2" />

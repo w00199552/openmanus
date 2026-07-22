@@ -8,7 +8,7 @@ import { formatListTime } from "@/utils/time";
 import { cn } from "@/lib/utils";
 
 /**
- * SessionList — left rail, WeChat/Feishu style.
+ * TopicList — left rail, shows topics (task/conversation groups).
  *
  * Each row is a 2-line card:
  *   ┌─────────────────────────────────────┐
@@ -16,39 +16,38 @@ import { cn } from "@/lib/utils";
  *   │           preview text…     ⟳       │  ← last message preview + running
  *   └─────────────────────────────────────┘
  *
- * Avatars: single face for root/subagent (DiceBear, stable per id/role),
- * overlapping faces for a team. A top search box filters by title + preview.
- * Running sessions show a spinner; unread shows a red badge.
+ * main topic is always pinned at top (Default group).
+ * Task topics (dispatched work) are in the Tasks group below.
  */
-export const SessionList = observer(function SessionList({
+export const TopicList = observer(function TopicList({
     collapsed = false,
 }) {
-    const { sessions } = useStore();
+    const { topics } = useStore();
     const [query, setQuery] = useState("");
 
     useEffect(() => {
-        sessions.load();
-    }, [sessions]);
+        topics.load();
+    }, [topics]);
 
     // Collapsed mode: narrow strip showing only avatars
     if (collapsed) {
-        const all = [...sessions.rootSessions, ...sessions.taskSessions];
+        const all = [...topics.mainTopic, ...topics.taskTopics];
         return (
             <div className="flex h-full flex-col items-center gap-1 overflow-y-auto bg-card py-3">
-                {all.map((s) => (
+                {all.map((t) => (
                     <button
-                        key={s.id}
-                        onClick={() => sessions.select(s.id)}
+                        key={t.id}
+                        onClick={() => topics.select(t.id)}
                         className="relative shrink-0 rounded-lg p-1 transition hover:bg-sidebar/40"
-                        title={s.title || s.id.slice(0, 12)}
+                        title={t.title || t.agent_name || t.id.slice(0, 12)}
                     >
-                        <SessionAvatar session={s} size={32} />
-                        {s.id === sessions.activeId && (
+                        <TopicAvatar topic={t} size={32} />
+                        {t.id === topics.activeTopicId && (
                             <span className="absolute -left-0.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-accent" />
                         )}
-                        {sessions.unreadCount(s.id) > 0 && (
+                        {topics.unreadCount(t.id) > 0 && (
                             <span className="absolute -right-0.5 -top-0.5 size-3.5 rounded-full bg-destructive text-[8px] font-bold text-white flex items-center justify-center">
-                                {sessions.unreadCount(s.id)}
+                                {topics.unreadCount(t.id)}
                             </span>
                         )}
                     </button>
@@ -58,16 +57,16 @@ export const SessionList = observer(function SessionList({
     }
 
     // filter both groups by the search query (title + preview)
-    const match = (s) => {
+    const match = (t) => {
         if (!query.trim()) return true;
         const q = query.trim().toLowerCase();
         return (
-            (s.title || "").toLowerCase().includes(q) ||
-            (s.metadata?.preview || "").toLowerCase().includes(q)
+            (t.title || "").toLowerCase().includes(q) ||
+            (t.preview || "").toLowerCase().includes(q)
         );
     };
-    const roots = sessions.rootSessions.filter(match);
-    const tasks = sessions.taskSessions.filter(match);
+    const main = topics.mainTopic.filter(match);
+    const tasks = topics.taskTopics.filter(match);
 
     return (
         <div className="flex h-full flex-col bg-card">
@@ -86,56 +85,54 @@ export const SessionList = observer(function SessionList({
 
             {/* list */}
             <div className="flex-1 overflow-y-auto px-1.5 pb-3">
-                {sessions.loading && (
+                {topics.loading && (
                     <p className="px-2.5 py-3 text-xs text-muted-foreground">
                         Loading…
                     </p>
                 )}
-                {sessions.error && (
+                {topics.error && (
                     <p className="px-2.5 py-2 text-xs text-destructive">
-                        {sessions.error}
+                        {topics.error}
                     </p>
                 )}
 
-                {!sessions.loading && (
+                {!topics.loading && (
                     <>
-                        {/* DEFAULT group — the entry agent(s) */}
+                        {/* DEFAULT group — main topic */}
                         <Section
-                            title="Default"
-                            empty={roots.length === 0}
+                            title="Main"
+                            empty={main.length === 0}
                             emptyHint={query.trim() ? "No matches." : undefined}
                         >
                             <ul className="space-y-1">
-                                {roots.map((s) => (
-                                    <SessionItem
-                                        key={s.id}
-                                        session={s}
-                                        unread={sessions.unreadCount(s.id)}
-                                        active={s.id === sessions.activeId}
-                                        onSelect={() => sessions.select(s.id)}
-                                        onDelete={() => sessions.remove(s.id)}
+                                {main.map((t) => (
+                                    <TopicItem
+                                        key={t.id}
+                                        topic={t}
+                                        unread={topics.unreadCount(t.id)}
+                                        active={t.id === topics.activeTopicId}
+                                        onSelect={() => topics.select(t.id)}
                                     />
                                 ))}
                             </ul>
                         </Section>
 
-                        {/* TASKS & TEAMS group — derived team/subagent work */}
+                        {/* TASKS group — dispatched work */}
                         <Section
-                            title="Tasks & Teams"
+                            title="Tasks"
                             empty={tasks.length === 0}
                             emptyHint={
                                 query.trim() ? "No matches." : "No tasks yet."
                             }
                         >
                             <ul className="space-y-1">
-                                {tasks.map((s) => (
-                                    <SessionItem
-                                        key={s.id}
-                                        session={s}
-                                        unread={sessions.unreadCount(s.id)}
-                                        active={s.id === sessions.activeId}
-                                        onSelect={() => sessions.select(s.id)}
-                                        onDelete={() => sessions.remove(s.id)}
+                                {tasks.map((t) => (
+                                    <TopicItem
+                                        key={t.id}
+                                        topic={t}
+                                        unread={topics.unreadCount(t.id)}
+                                        active={t.id === topics.activeTopicId}
+                                        onSelect={() => topics.select(t.id)}
                                     />
                                 ))}
                             </ul>
@@ -147,9 +144,9 @@ export const SessionList = observer(function SessionList({
     );
 });
 
-/** A titled group section; renders nothing visually when there's no content. */
+/** A titled group section. */
 function Section({ title, children, empty, emptyHint }) {
-    if (empty && !emptyHint) return null; // hide empty groups with no hint
+    if (empty && !emptyHint) return null;
     return (
         <div className="mb-1">
             <h3 className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
@@ -166,10 +163,9 @@ function Section({ title, children, empty, emptyHint }) {
     );
 }
 
-function SessionItem({ session, unread, active, onSelect, onDelete }) {
-    const isTeam = session.kind === "team";
-    const isRunning = session.status === "running";
-    const preview = session.metadata?.preview || "";
+function TopicItem({ topic, unread, active, onSelect }) {
+    const isRunning = topic.status === "running";
+    const preview = topic.preview || "";
 
     return (
         <li>
@@ -186,37 +182,31 @@ function SessionItem({ session, unread, active, onSelect, onDelete }) {
                     <span className="absolute left-0 top-1/2 h-7 w-[2px] -translate-y-1/2 rounded-full bg-accent accent-glow" />
                 )}
 
-                {/* avatar with a live "pulse" dot when the agent is working */}
                 <div className="relative mt-0.5">
-                    <SessionAvatar session={session} size={36} />
+                    <TopicAvatar topic={topic} size={36} />
                     {isRunning && (
                         <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-accent ring-2 ring-card animate-pulse-dot" />
                     )}
                 </div>
 
-                {/* two-line content */}
                 <div className="min-w-0 flex-1">
-                    {/* line 1: title + time (the running state shows as a pulse on the avatar) */}
                     <div className="flex items-center gap-1.5">
                         <span className="flex-1 truncate text-[13px] font-medium text-foreground">
-                            {session.title || session.id.slice(0, 12)}
+                            {topic.title || topic.agent_name || topic.id.slice(0, 12)}
                         </span>
                         <span className="shrink-0 text-[11px] text-muted-foreground/60">
-                            {formatListTime(
-                                session.updated_at || session.created_at
-                            )}
+                            {formatListTime(topic.updated_at || topic.created_at)}
                         </span>
                     </div>
 
-                    {/* line 2: preview + badges */}
                     <div className="mt-0.5 flex items-center gap-1.5">
                         <span className="flex-1 truncate text-[11px] text-muted-foreground">
                             {preview ||
-                                (isTeam
+                                (topic.kind === "team"
                                     ? "Team session"
                                     : "Start a conversation")}
                         </span>
-                        {isTeam && (
+                        {topic.kind === "team" && (
                             <span className="shrink-0 rounded-sm bg-foreground/8 px-1 text-[9px] font-medium leading-tight text-muted-foreground">
                                 team
                             </span>
@@ -228,15 +218,24 @@ function SessionItem({ session, unread, active, onSelect, onDelete }) {
                         )}
                     </div>
                 </div>
-
-                <Trash2
-                    className="size-3 shrink-0 self-center opacity-0 transition group-hover:opacity-60 hover:!opacity-100 hover:text-destructive"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete();
-                    }}
-                />
             </button>
         </li>
+    );
+}
+
+/** Render an avatar for a topic (uses agent_name for DiceBear seed). */
+function TopicAvatar({ topic, size = 36 }) {
+    // Reuse SessionAvatar by mapping topic → session-like object.
+    // SessionAvatar reads kind + name/members for the avatar style.
+    return (
+        <SessionAvatar
+            session={{
+                id: topic.session_id || topic.id,
+                kind: topic.kind,
+                name: topic.agent_name,
+                metadata: {},
+            }}
+            size={size}
+        />
     );
 }

@@ -35,15 +35,15 @@ export class AgentRuntime {
     streamClient = new StreamClient();
 
     // ─── injected collaborators ──────────────────────────────────────────────
-    /** @type {null | { sessions: any[], bumpActivity: Function, markRunning: Function, markStatus: Function }} */
-    _sessionStore = null;
+    /** @type {null | { topics: any[], activeTopicId: string|null, active: any, bumpActivity: Function, markRunning: Function, markStatus: Function, load: Function, select: Function }} */
+    _topicStore = null;
     /** @type {null | SandboxStore} injected post-construction for cd delegation */
     _sandboxStore = null;
 
     // ─── internal handles (NOT observable — prefixed _) ─────────────────────
     _subHandle = null; // current SSE subscription handle
     _sendAborts = {}; // session_id → AbortController (for stop)
-    _preSendSessionIds = null; // session id snapshot before a manus turn (for _afterDelegation diff)
+    _preSendSessionIds = null; // topic id snapshot before a main-topic turn (for _afterDelegation diff)
     // topic_id → [session_id] cache for team merging. Lives OUTSIDE mobx (module
     // level) so writing it never triggers computed re-runs — the team-view freeze
     // was an infinite loop: computed read it → refresh wrote it → re-run.
@@ -64,9 +64,9 @@ export class AgentRuntime {
         if (typeof window !== "undefined") window.__rt = this; // DEBUG
     }
 
-    /** Inject the SessionStore (for list unread/preview/status sync). Optional. */
-    setSessionStore(s) {
-        this._sessionStore = s;
+    /** Inject the TopicStore (for list unread/preview/status sync). Optional. */
+    setTopicStore(s) {
+        this._topicStore = s;
     }
 
     /** Inject the SandboxStore (for cd command delegation + workdir sync). Optional. */
@@ -103,8 +103,8 @@ export class AgentRuntime {
     setActive(sessionId, topicId = null) {
         this.activeSessionId = sessionId;
         this.activeTopicId = topicId;
-        // Sync sandbox workdir to match the selected session
-        this._sandboxStore?.syncFromSession(sessionId);
+        // Sync sandbox workdir to match the selected topic
+        this._sandboxStore?.syncFromTopic();
         // Rebuild the live subscription for the new view (async history load first).
         this._resubscribe();
     }
@@ -125,12 +125,12 @@ export class AgentRuntime {
             return;
         }
 
-        // Snapshot session ids BEFORE the turn — used by _afterDelegation to detect
-        // NEW sessions created during this turn (dispatch may create team/subagent
-        // sessions, and the session list may get reloaded mid-turn, so we can't
+        // Snapshot topic ids BEFORE the turn — used by _afterDelegation to detect
+        // NEW topics created during this turn (dispatch may create team/subagent
+        // topics, and the topic list may get reloaded mid-turn, so we can't
         // diff against the live list at _endRun time).
         this._preSendSessionIds = new Set(
-            (this._sessionStore?.sessions || []).map((s) => s.id)
+            (this._topicStore?.topics || []).map((t) => t.id)
         );
 
         // 1. optimistic user bubble
@@ -147,7 +147,10 @@ export class AgentRuntime {
             this.runningBySession[sessionId] = true;
             this.error = null;
         });
-        this._sessionStore?.markRunning?.(sessionId);
+        // mark the active topic running (sessionId may not be the topic id;
+        // the active topic is what the list surfaces to the user).
+        const runningTopicId = this._topicStore?.activeTopicId;
+        if (runningTopicId) this._topicStore?.markRunning?.(runningTopicId);
 
         // 2. Rebuild the subscription BEFORE triggering the run. The server starts
         //    the run the instant POST is received (async), so events can appear the
@@ -270,7 +273,7 @@ export class AgentRuntime {
             // In team view, a new member agent may appear mid-run (TeamLeader
             // dispatches Coder/Researcher). Add its session_id directly to the member
             // cache so the merged view picks it up. We DON'T call _refreshTopicMembers
-            // (which reads SessionStore.sessions) because that list may not have been
+            // (which reads TopicStore.topics) because that list may not have been
             // reloaded yet — the event's session_id is authoritative.
             if (this.activeTopicId && sid && sid !== this.activeTopicId) {
                 const members = _topicMembersCache[this.activeTopicId] || [];
@@ -281,31 +284,32 @@ export class AgentRuntime {
         });
     }
 
-    /** Mark a session's run as finished + sync the session list. */
+    /** Mark a session's run as finished + sync the topic list. */
     _endRun(sessionId) {
         runInAction(() => {
             this.runningBySession[sessionId] = false;
         });
-        if (this._sessionStore) {
+        // The list is keyed by topic id, not session id. The active topic is the
+        // one the user is currently looking at, so attribute activity to it.
+        const topicId = this._topicStore?.activeTopicId;
+        if (topicId) {
             const preview = this._lastAssistantText(sessionId);
             const isActive =
-                (this.activeTopicId
-                    ? false
-                    : this.activeSessionId === sessionId) ||
+                this.activeSessionId === sessionId ||
                 (this.activeTopicId &&
                     (_topicMembersCache[this.activeTopicId] || []).includes(
                         sessionId
                     ) &&
                     this.activeSessionId === sessionId);
-            this._sessionStore.bumpActivity?.(sessionId, {
+            this._topicStore.bumpActivity?.(topicId, {
                 unread: isActive ? 0 : 1,
                 preview,
                 speaker: "assistant",
             });
-            this._sessionStore.markStatus?.(sessionId, "active");
+            this._topicStore.markStatus?.(topicId, "active");
         }
-        // When the DEFAULT entry's turn ends, the agent may have dispatched a new
-        // sub-agent / team (via the dispatch tool). Refresh the session list so the
+        // When the main topic's turn ends, the agent may have dispatched a new
+        // sub-agent / team (via the dispatch tool). Refresh the topic list so the
         // new child appears without a manual page reload, then auto-switch to it
         // so the user lands on the delegated work.
         if (sessionId === "manus") {
@@ -314,24 +318,26 @@ export class AgentRuntime {
     }
 
     /**
-     * After a default-agent turn: reload the session list and, if a NEW derived
-     * session (team / top-level subagent) appeared, switch the view to it.
+     * After a main-topic turn: reload the topic list and, if a NEW derived
+     * topic (team / top-level subagent) appeared, switch the view to it.
      * Detects "new" by diffing the id set before vs after the reload — more
      * reliable than trusting a parent field.
      */
     async _afterDelegation() {
-        if (!this._sessionStore) return;
+        if (!this._topicStore) return;
         // Use the snapshot taken at send() time — NOT the live list (which may
-        // have been reloaded mid-turn, already containing the new sessions).
+        // have been reloaded mid-turn, already containing the new topics).
         const before = this._preSendSessionIds || new Set();
         this._preSendSessionIds = null;
-        const list = await this._sessionStore.load();
+        const list = await this._topicStore.load();
         const child = _newestDerived(list, before);
         if (child) {
-            // child.id is the session_id (from topic.session_id);
-            // child.topic_id is the topic to fan-in.
-            this.setActive(child.id, child.topic_id || null);
-            this._sessionStore.select(child.id);
+            // child is a topic: child.id = topic_id, child.session_id = focus session.
+            // For team topics the topic_id fans-in member sessions; for a single
+            // subagent topic, just observe its session.
+            const isTeam = child.kind === "team";
+            this.setActive(child.session_id || child.id, isTeam ? child.id : null);
+            this._topicStore.select(child.id);
         }
     }
 
@@ -391,13 +397,18 @@ export class AgentRuntime {
         }
     }
 
-    /** Refresh the cached member list for a topic from the session store. */
+    /** Refresh the cached member list for a topic from the topic store. */
     _refreshTopicMembers(topicId) {
-        if (!this._sessionStore) return;
+        if (!this._topicStore) return;
         const members = [topicId];
-        for (const s of this._sessionStore.sessions) {
-            if (s.topic_id === topicId) members.push(s.id);
+        const active = this._topicStore.active;
+        if (active && active.id === topicId && active.session_id) {
+            members.push(active.session_id);
         }
+        // Members of a team are the sessions belonging to the same topic. The
+        // topic list only exposes the latest session per topic, so this list is
+        // a starting point — additional members surface via event dispatch in
+        // _dispatchEvent (which adds any unseen session_id directly to the cache).
         _topicMembersCache[topicId] = Array.from(new Set(members));
     }
 
@@ -438,33 +449,30 @@ export class AgentRuntime {
 }
 
 /**
- * Find the newest DERIVED session (team / top-level subagent) not in beforeIds.
- * Used to auto-switch to the task the default agent just delegated: instead of
- * trusting a parent field (which can be missing), we diff the session list
- * before vs after reload and grab any new derived session. Picks the most
+ * Find the newest DERIVED topic (team / top-level subagent) not in beforeIds.
+ * Used to auto-switch to the task the main topic just delegated: instead of
+ * trusting a parent field (which can be missing), we diff the topic list
+ * before vs after reload and grab any new derived topic. Picks the most
  * recently updated one if several appeared.
+ *
+ * Each item is a topic object: { id, title, agent_name, kind, status, preview,
+ * session_id, workdir, created_at, updated_at }.
  */
 function _newestDerived(list, beforeIds) {
-    // Find topics (not sessions) that are new since the last snapshot.
-    // In the topic-based list, each item has a `topic_id` — new topics
-    // have a topic_id we haven't seen before.
-    const seen = new Set();
-    const fresh = (list || []).filter((s) => {
-        const tid = s.topic_id || s.id;
-        if (beforeIds.has(s.id) || seen.has(tid)) return false;
-        seen.add(tid);
-        return s.id !== "manus";  // exclude the default entry
+    // Skip the main topic — we only care about derived work.
+    const fresh = (list || []).filter((t) => {
+        if (!t || t.id === "main") return false;
+        return !beforeIds.has(t.id);
     });
     if (!fresh.length) return null;
     return fresh.sort((a, b) => {
-        const ta =
-            Date.parse(
-                (a.updated_at || a.created_at || "").replace(" ", "T")
-            ) || 0;
-        const tb =
-            Date.parse(
-                (b.updated_at || b.created_at || "").replace(" ", "T")
-            ) || 0;
+        const ta = _ts(a.updated_at || a.created_at);
+        const tb = _ts(b.updated_at || b.created_at);
         return tb - ta;
     })[0];
+}
+
+function _ts(s) {
+    if (!s) return 0;
+    return Date.parse(String(s).replace(" ", "T")) || 0;
 }

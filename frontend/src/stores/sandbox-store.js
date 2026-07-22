@@ -2,7 +2,7 @@
  * SandboxStore — owns the Sandbox panel's entire state + operations.
  *
  * Single source of truth for:
- *   - workdir (the active session's working directory)
+ *   - workdir (the active topic's working directory)
  *   - cd command (API call + workdir update)
  *   - file CRUD (tree, read, write, lazy children)
  *
@@ -18,41 +18,39 @@ const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
 
 export class SandboxStore {
     // ─── injected collaborators ──────────────────────────────────────────────
-    _sessionStore = null;
+    _topicStore = null;
 
     // ─── observable state ───────────────────────────────────────────────────
-    /** Current workdir (synced from session on switch, updated by cd). */
+    /** Current workdir (synced from the active topic on switch, updated by cd). */
     workdir = "";
 
     constructor() {
         makeAutoObservable(this);
     }
 
-    setSessionStore(s) {
-        this._sessionStore = s;
+    setTopicStore(s) {
+        this._topicStore = s;
     }
 
     // ─── workdir sync ────────────────────────────────────────────────────────
 
     /**
-     * Sync workdir from a session row (called when the user switches session).
-     * Reads `sess.workdir` from the SessionStore and copies it into our
+     * Sync workdir from the active topic (called when the user switches topic).
+     * Reads `topic.workdir` from the TopicStore and copies it into our
      * observable — no API call needed.
      */
-    syncFromSession(sessionId) {
-        if (!this._sessionStore) return;
-        const sess = this._sessionStore.sessions.find(
-            (s) => s.id === sessionId
-        );
-        if (sess && sess.workdir) {
-            this.workdir = sess.workdir;
+    syncFromTopic() {
+        if (!this._topicStore) return;
+        const topic = this._topicStore.active;
+        if (topic && topic.workdir) {
+            this.workdir = topic.workdir;
         }
     }
 
     // ─── cd command ──────────────────────────────────────────────────────────
 
     /**
-     * Execute a cd command: call the backend API, update workdir + session row.
+     * Execute a cd command: call the backend API, update workdir + active topic.
      * Returns `{workdir, action}` so the caller can display a system message.
      * Throws on error.
      */
@@ -74,11 +72,9 @@ export class SandboxStore {
         if (body.workdir && body.action === "cd") {
             runInAction(() => {
                 this.workdir = body.workdir;
-                if (this._sessionStore) {
-                    const sess = this._sessionStore.sessions.find(
-                        (s) => s.id === sessionId
-                    );
-                    if (sess) sess.workdir = body.workdir;
+                if (this._topicStore) {
+                    const topic = this._topicStore.active;
+                    if (topic) topic.workdir = body.workdir;
                 }
             });
         }

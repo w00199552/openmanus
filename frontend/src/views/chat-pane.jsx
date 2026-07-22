@@ -1,8 +1,9 @@
 import { observer } from "mobx-react-lite";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 
 import { useStore } from "@/hooks/use-store";
+import { resetHistory } from "@/services/session-service";
 import { ThreadView } from "@/components/chat/thread-view";
 import { ChatInput } from "@/components/chat/chat-input";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -12,27 +13,28 @@ import { TooltipProvider } from "@/components/ui/tooltip";
  *
  * One unified view: the runtime's `activeMessages` is either a single session's
  * messages (1:1) or the team's merged timeline (group chat). Switching the
- * active session rebinds the runtime's live subscription; the runtime owns all
+ * active topic rebinds the runtime's live subscription; the runtime owns all
  * streaming state, this component just reads observables + forwards actions.
  */
 export const ChatPane = observer(function ChatPane({ onToggleCollapse }) {
-    const { sessions, runtime } = useStore();
-    const active = sessions.active;
-    const sessionId = active?.id;
+    const { topics, runtime } = useStore();
+    const active = topics.active;
+    const sessionId = active?.session_id;
     const isTeam = active?.kind === "team";
-    // team session → topic view (fan-in); single session → topic null
-    const topicId = isTeam ? active?.topic_id : null;
+    // team topic → topic view (fan-in); single topic → topic_id still passed
+    // (runtime uses it to scope membership + delegate-routing).
+    const topicId = active?.id;
 
     // When the active session/topic changes, tell the runtime to switch what it's
     // observing (it loads history + rebuilds the SSE subscription).
     useEffect(() => {
-        if (sessionId) runtime.setActive(sessionId, topicId);
+        if (sessionId) runtime.setActive(sessionId, isTeam ? topicId : null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sessionId, topicId]);
+    }, [sessionId, topicId, isTeam]);
 
-    /** "New chat" = reset the default entry's history. */
+    /** "New chat" = reset the main topic's history. */
     const handleNewChat = async () => {
-        await sessions.resetDefault();
+        await resetHistory("manus").catch(() => {});
         runtime.clear("manus");
     };
 
@@ -51,10 +53,10 @@ export const ChatPane = observer(function ChatPane({ onToggleCollapse }) {
                     <span className="truncate text-[13px] font-medium">
                         {active
                             ? active.kind === "subagent"
-                                ? active.name || "agent"
+                                ? active.agent_name || "agent"
                                 : active.kind === "team"
                                   ? "Team"
-                                  : active.title || active.id.slice(0, 12)
+                                  : active.title || (active.id || "").slice(0, 12)
                             : "New conversation"}
                     </span>
                     {isTeam && (
