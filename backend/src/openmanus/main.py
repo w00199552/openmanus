@@ -37,7 +37,7 @@ from .agent_loader import agent_loader
 from .api import agents, files, sessions, skills, streams, tools
 from .api.sessions import workdir_router
 from .config import settings
-from .db import init_db, topic_store
+from .db import init_db, session_store, topic_store
 
 logging.basicConfig(
     level=logging.INFO,
@@ -72,6 +72,15 @@ async def lifespan(app: FastAPI):
     main_topic = await topic_store.ensure_main()
     if main_topic and main_topic.get("workdir"):
         settings.workdir = main_topic["workdir"]
+    # Ensure a Manus entry session exists in the main topic (fixed id "manus"
+    # so the frontend can always find it as the default conversation entry).
+    existing = await session_store.get("manus")
+    if not existing:
+        await session_store.create(
+            session_id="manus", topic_id="main",
+            kind="root", name="Manus", title="Manus",
+        )
+        logger.info("created Manus entry session in main topic")
     logger.info(
         "openmanus ready | model=%s base=%s workdir=%s db=%s",
         settings.model, settings.openai_base_url, settings.workdir, settings.database_url,
