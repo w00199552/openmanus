@@ -273,9 +273,12 @@ class StreamEngine:
         Task-prompt turn from _start_and_record. The child's sole input is the
         Task prompt built below.
         """
-        from .tools.roles import role_prompt  # lazy: avoid import cycle
-
-        prompt = f"{role_prompt(target_agent)}\n\nTask:\n{task}"
+        # The child's system prompt is set by build_agent → create_deep_agent
+        # (from ~/.openmanus/agents/<name>/prompt.md). Do NOT prepend it here —
+        # prepending would duplicate it as a user message, wasting tokens and
+        # confusing role boundaries (system prompt should stay in the system
+        # slot, not be echoed back as a user instruction).
+        prompt = task
 
         # DEFER until the caller's own stream finishes. We store only the
         # session_id — the agent is built fresh when _stream actually runs.
