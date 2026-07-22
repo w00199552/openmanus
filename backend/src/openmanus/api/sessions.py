@@ -13,9 +13,10 @@ from pydantic import BaseModel
 from typing import Any
 
 from ..agent_factory import build_agent, close_agent, compute_thread_id
-from ..db import session_store
+from ..db import session_store, topic_store
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+topics_router = APIRouter(prefix="/topics", tags=["topics"])
 
 
 class CreateSession(BaseModel):
@@ -322,3 +323,48 @@ async def validate_workdir(body: ValidateWorkdir) -> dict:
         "valid": exists and is_dir,
         "entries": entries,
     }
+
+
+# ─── Topics API ────────────────────────────────────────────────────────────
+
+
+class TopicSummary(BaseModel):
+    """A topic as shown in the topicList (session list replacement)."""
+    id: str
+    title: str | None = None
+    workdir: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    # Aggregated from the topic's sessions for display:
+    session_id: str | None = None     # latest session id (for SSE subscription)
+    agent_name: str | None = None     # the (latest) agent in this topic
+    kind: str = "root"                # the (latest) session kind
+    status: str = "active"            # the (latest) session status
+    preview: str | None = None        # last message preview (from metadata)
+
+
+@topics_router.get("", response_model=list[TopicSummary])
+@topics_router.get("/", response_model=list[TopicSummary], include_in_schema=False)
+async def list_topics() -> list[dict]:
+    """List all topics, newest first, with the latest session's info merged in."""
+    topics = await topic_store.list()
+    result = []
+    for t in topics:
+        sessions = await session_store.list_in_topic(t["id"])
+        latest = sessions[0] if sessions else None
+        preview = None
+        if latest and latest.get("metadata"):
+            preview = (latest["metadata"] or {}).get("preview")
+        result.append({
+            "id": t["id"],
+            "title": t.get("title"),
+            "workdir": t.get("workdir"),
+            "created_at": t.get("created_at"),
+            "updated_at": t.get("updated_at"),
+            "session_id": (latest or {}).get("id"),
+            "agent_name": (latest or {}).get("name"),
+            "kind": (latest or {}).get("kind", "root"),
+            "status": (latest or {}).get("status", "active"),
+            "preview": preview,
+        })
+    return result

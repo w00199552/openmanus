@@ -328,7 +328,8 @@ export class AgentRuntime {
         const list = await this._sessionStore.load();
         const child = _newestDerived(list, before);
         if (child) {
-            // switching view also rebuilds the subscription + loads history
+            // child.id is the session_id (from topic.session_id);
+            // child.topic_id is the topic to fan-in.
             this.setActive(child.id, child.topic_id || null);
             this._sessionStore.select(child.id);
         }
@@ -444,11 +445,16 @@ export class AgentRuntime {
  * recently updated one if several appeared.
  */
 function _newestDerived(list, beforeIds) {
-    const fresh = (list || []).filter(
-        (s) =>
-            (s.kind === "team" || s.kind === "subagent") &&
-            !beforeIds.has(s.id)
-    );
+    // Find topics (not sessions) that are new since the last snapshot.
+    // In the topic-based list, each item has a `topic_id` — new topics
+    // have a topic_id we haven't seen before.
+    const seen = new Set();
+    const fresh = (list || []).filter((s) => {
+        const tid = s.topic_id || s.id;
+        if (beforeIds.has(s.id) || seen.has(tid)) return false;
+        seen.add(tid);
+        return s.id !== "manus";  // exclude the default entry
+    });
     if (!fresh.length) return null;
     return fresh.sort((a, b) => {
         const ta =

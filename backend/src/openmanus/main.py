@@ -35,7 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .agent_loader import agent_loader
 from .api import agents, files, sessions, skills, streams, tools
-from .api.sessions import workdir_router
+from .api.sessions import topics_router, workdir_router
 from .config import settings
 from .db import init_db, session_store, topic_store
 
@@ -102,6 +102,7 @@ def create_app() -> FastAPI:
     # GET /scopes/:id/stream, GET /health.
     app.include_router(streams.router)
     app.include_router(sessions.router)
+    app.include_router(topics_router)
     app.include_router(agents.router)
     app.include_router(skills.router)
     app.include_router(tools.router)

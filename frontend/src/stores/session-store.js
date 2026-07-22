@@ -83,15 +83,11 @@ export class SessionStore {
     }
 
     /**
-     * Derived work shown in the TASKS & TEAMS group. Teams and subagents both
-     * show here — they represent dispatched work the user can click into.
-     * (TODO: eventually this should show TOPICS, not individual sessions.
-     * For now we show non-root sessions so dispatched agents appear.)
+     * Task topics shown in the TASKS group — everything that's not the default
+     * entry (root sessions other than "manus", plus team/subagent topics).
      */
     get taskSessions() {
-        return this.sortedSessions.filter(
-            (s) => s.kind === "team" || s.kind === "subagent"
-        );
+        return this.sortedSessions.filter((s) => s.id !== DEFAULT_ID);
     }
 
     /** Unread count for a session (0 if none / not tracked). */
@@ -160,17 +156,37 @@ export class SessionStore {
         }
     }
 
-    /** Load the session list from the backend (via service). Returns the list. */
+    /** Load the topic list from the backend (via service). Returns the list.
+     *
+     * Each topic is mapped to a session-like object so the rest of the store
+     * (sorting, filtering, active lookup) works unchanged. The mapping:
+     *   topic.session_id → session.id  (used for SSE subscription + history)
+     *   topic.id         → session.topic_id
+     *   topic.agent_name → session.name
+     *   topic.kind       → session.kind
+     *   topic.title      → session.title
+     *   topic.preview    → session.metadata.preview
+     */
     async load() {
         this.loading = true;
         this.error = null;
         try {
-            const data = await sessionApi.listSessions();
+            const data = await sessionApi.listTopics();
             runInAction(() => {
-                this.sessions = Array.isArray(data) ? data : [];
+                this.sessions = (Array.isArray(data) ? data : []).map((t) => ({
+                    id: t.session_id || t.id,
+                    topic_id: t.id,
+                    kind: t.kind || "root",
+                    name: t.agent_name,
+                    status: t.status || "active",
+                    title: t.title,
+                    workdir: t.workdir,
+                    created_at: t.created_at,
+                    updated_at: t.updated_at,
+                    metadata: { preview: t.preview },
+                }));
                 this.loading = false;
                 // if the restored activeId no longer exists, fall back to the default
-                // entry (which is always present / created implicitly on first use).
                 if (
                     this.activeId &&
                     this.activeId !== DEFAULT_ID &&

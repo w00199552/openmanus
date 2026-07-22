@@ -136,6 +136,12 @@ def convert_chunk(chunk, st, *, session_id, speaker):
     msg, _meta = data
 
     if isinstance(msg, AIMessageChunk):
+        # Use the LangChain AIMessageChunk's own id as message_id (not _new_id).
+        # This keeps the live stream's message_id consistent with the
+        # checkpoint-stored AIMessage.id, so history replay (GET /sessions/:id)
+        # produces the same bubble ids as the live stream.
+        chunk_msg_id = getattr(msg, "id", None) or None
+
         for tc in msg.tool_call_chunks or []:
             name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
             args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", None)
@@ -144,7 +150,7 @@ def convert_chunk(chunk, st, *, session_id, speaker):
                 tcid = tcid or _new_id()
                 st.open_tool_calls.add(tcid)
                 if st.assistant_message_id is None:
-                    st.assistant_message_id = _new_id()
+                    st.assistant_message_id = chunk_msg_id or _new_id()
                 frames.append(E.frame(E.ev_tool_call_start(
                     session_id=session_id, message_id=st.assistant_message_id,
                     speaker=speaker, call_id=tcid, tool=name,
@@ -160,7 +166,7 @@ def convert_chunk(chunk, st, *, session_id, speaker):
             if not thought:
                 continue
             if st.assistant_message_id is None:
-                st.assistant_message_id = _new_id()
+                st.assistant_message_id = chunk_msg_id or _new_id()
             frames.append(E.frame(E.ev_thinking_delta(
                 session_id=session_id, message_id=st.assistant_message_id,
                 speaker=speaker, delta=thought,
@@ -171,7 +177,7 @@ def convert_chunk(chunk, st, *, session_id, speaker):
                 continue
             if not st.message_open:
                 if st.assistant_message_id is None:
-                    st.assistant_message_id = _new_id()
+                    st.assistant_message_id = chunk_msg_id or _new_id()
                 frames.append(E.frame(E.ev_message_start(
                     session_id=session_id, message_id=st.assistant_message_id, speaker=speaker,
                 )))
