@@ -8,7 +8,7 @@
  * later would only touch this file.
  *
  * Two subscription modes (mutually exclusive; pick one):
- *   - { scope: teamId }    → GET /stream?scope=teamId
+ *   - { topic: teamId }    → GET /stream?topic=teamId
  *                            The backend fans-in the whole team and DYNAMICALLY
  *                            expands members spawned mid-run, so the client
  *                            doesn't need to reconnect when agents appear.
@@ -29,7 +29,7 @@ export class StreamClient {
     /**
      * Subscribe to a live event stream.
      *
-     * @param {{scope?: string, sessions?: string[]}} opts — one of the two modes
+     * @param {{topic?: string, sessions?: string[]}} opts — one of the two modes
      * @param {{onEvent?: (e: object) => void, onDone?: () => void, onError?: (e: unknown) => void}} cb
      * @returns {{ dispose(): void }} handle — call dispose() to close the stream
      */
@@ -71,8 +71,8 @@ export class StreamClient {
 
     /** Build the SSE URL for the chosen subscription mode. */
     _buildUrl(opts) {
-        if (opts.scope) {
-            return `${BACKEND}/stream?scope=${encodeURIComponent(opts.scope)}`;
+        if (opts.topic) {
+            return `${BACKEND}/stream?topic=${encodeURIComponent(opts.topic)}`;
         }
         if (opts.sessions && opts.sessions.length) {
             const ids = opts.sessions.map(encodeURIComponent).join(",");

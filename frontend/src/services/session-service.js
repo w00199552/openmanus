@@ -4,11 +4,11 @@
  */
 
 /** Create a new session (conversation container). */
-export async function createSession({ title, kind = "root" } = {}) {
+export async function createSession({ title, kind = "root", topic_id = "main" } = {}) {
     const res = await fetch("/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, title }),
+        body: JSON.stringify({ kind, title, topic_id }),
     });
     if (!res.ok) throw new Error(`createSession: ${res.status}`);
     return res.json();

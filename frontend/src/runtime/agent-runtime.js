@@ -3,7 +3,7 @@
  * observable state and actions. This is the ONLY object the view layer touches.
  *
  * Responsibilities (pure orchestration — it owns no domain logic itself):
- *   - track which session/scope is currently being observed
+ *   - track which session/topic is currently being observed
  *   - on switch: load history, (re)build the SSE subscription, drain events
  *   - on send: POST to trigger the run (background), optimistic user bubble,
  *     ensure a subscription is receiving the output
@@ -26,7 +26,7 @@ const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
 
 // Team member cache — OUTSIDE mobx so writing it never triggers computed
 // re-runs (the team-view freeze was an infinite loop otherwise).
-const _scopeMembersCache = {};
+const _topicMembersCache = {};
 
 export class AgentRuntime {
     /** @type {MessageStore} */
@@ -44,16 +44,16 @@ export class AgentRuntime {
     _subHandle = null; // current SSE subscription handle
     _sendAborts = {}; // session_id → AbortController (for stop)
     _preSendSessionIds = null; // session id snapshot before a manus turn (for _afterDelegation diff)
-    // scope_id → [session_id] cache for team merging. Lives OUTSIDE mobx (module
+    // topic_id → [session_id] cache for team merging. Lives OUTSIDE mobx (module
     // level) so writing it never triggers computed re-runs — the team-view freeze
     // was an infinite loop: computed read it → refresh wrote it → re-run.
-    // Access via the module-level _scopeMembersCache.
+    // Access via the module-level _topicMembersCache.
 
     // ─── observable state ───────────────────────────────────────────────────
     /** The session the user is focused on. */
     activeSessionId = null;
-    /** When set, the view is the team group-chat (fan-in of this scope's members). */
-    activeScopeId = null;
+    /** When set, the view is the team group-chat (fan-in of this topic's members). */
+    activeTopicId = null;
     /** session_id → bool: a run is currently streaming for that session. */
     runningBySession = {};
     /** last error message, if any. */
@@ -78,16 +78,16 @@ export class AgentRuntime {
 
     /** Messages for the current view: one session, or the team's merged timeline. */
     get activeMessages() {
-        if (this.activeScopeId) {
-            return this._mergedScopeMessages(this.activeScopeId);
+        if (this.activeTopicId) {
+            return this._mergedTopicMessages(this.activeTopicId);
         }
         return this.messageStore.get(this.activeSessionId);
     }
 
     /** Is anything in the current view actively streaming? */
     get isRunning() {
-        if (this.activeScopeId) {
-            const members = _scopeMembersCache[this.activeScopeId] || [];
+        if (this.activeTopicId) {
+            const members = _topicMembersCache[this.activeTopicId] || [];
             return members.some((sid) => this.runningBySession[sid]);
         }
         return !!this.runningBySession[this.activeSessionId];
@@ -98,11 +98,11 @@ export class AgentRuntime {
     /**
      * Switch what the user is observing.
      * @param {string} sessionId  the focus session
-     * @param {string|null} scopeId  null = single session; set = team fan-in view
+     * @param {string|null} topicId  null = single session; set = team fan-in view
      */
-    setActive(sessionId, scopeId = null) {
+    setActive(sessionId, topicId = null) {
         this.activeSessionId = sessionId;
-        this.activeScopeId = scopeId;
+        this.activeTopicId = topicId;
         // Sync sandbox workdir to match the selected session
         this._sandboxStore?.syncFromSession(sessionId);
         // Rebuild the live subscription for the new view (async history load first).
@@ -154,9 +154,9 @@ export class AgentRuntime {
         //    moment POST returns. If we re-subscribe AFTER POST (as we once did),
         //    early events are lost to the old (already-done) drain / a reconnecting
         //    EventSource. Building the drain first guarantees every event is caught.
-        const inView = this.activeScopeId
+        const inView = this.activeTopicId
             ? this.activeSessionId === sessionId ||
-              (_scopeMembersCache[this.activeScopeId] || []).includes(sessionId)
+              (_topicMembersCache[this.activeTopicId] || []).includes(sessionId)
             : this.activeSessionId === sessionId;
         if (inView) {
             // Rebuild the subscription WITHOUT reloading history: the session's
@@ -269,13 +269,13 @@ export class AgentRuntime {
             }
             // In team view, a new member agent may appear mid-run (TeamLeader
             // dispatches Coder/Researcher). Add its session_id directly to the member
-            // cache so the merged view picks it up. We DON'T call _refreshScopeMembers
+            // cache so the merged view picks it up. We DON'T call _refreshTopicMembers
             // (which reads SessionStore.sessions) because that list may not have been
             // reloaded yet — the event's session_id is authoritative.
-            if (this.activeScopeId && sid && sid !== this.activeScopeId) {
-                const members = _scopeMembersCache[this.activeScopeId] || [];
+            if (this.activeTopicId && sid && sid !== this.activeTopicId) {
+                const members = _topicMembersCache[this.activeTopicId] || [];
                 if (!members.includes(sid)) {
-                    _scopeMembersCache[this.activeScopeId] = [...members, sid];
+                    _topicMembersCache[this.activeTopicId] = [...members, sid];
                 }
             }
         });
@@ -289,11 +289,11 @@ export class AgentRuntime {
         if (this._sessionStore) {
             const preview = this._lastAssistantText(sessionId);
             const isActive =
-                (this.activeScopeId
+                (this.activeTopicId
                     ? false
                     : this.activeSessionId === sessionId) ||
-                (this.activeScopeId &&
-                    (_scopeMembersCache[this.activeScopeId] || []).includes(
+                (this.activeTopicId &&
+                    (_topicMembersCache[this.activeTopicId] || []).includes(
                         sessionId
                     ) &&
                     this.activeSessionId === sessionId);
@@ -349,18 +349,18 @@ export class AgentRuntime {
         // load history for the focus session (and, in team view, its members)
         if (loadHistory) {
             this._loadHistory(this.activeSessionId);
-            if (this.activeScopeId) {
-                this._refreshScopeMembers(this.activeScopeId);
-                for (const sid of _scopeMembersCache[this.activeScopeId] ||
+            if (this.activeTopicId) {
+                this._refreshTopicMembers(this.activeTopicId);
+                for (const sid of _topicMembersCache[this.activeTopicId] ||
                     []) {
                     this._loadHistory(sid);
                 }
             }
         }
 
-        // open the subscription (scope mode for teams, sessions mode otherwise)
-        const spec = this.activeScopeId
-            ? { scope: this.activeScopeId }
+        // open the subscription (topic mode for teams, sessions mode otherwise)
+        const spec = this.activeTopicId
+            ? { topic: this.activeTopicId }
             : { sessions: [this.activeSessionId] };
         this._subHandle = this.streamClient.subscribe(spec, {
             onEvent: (e) => this._dispatchEvent(e),
@@ -390,20 +390,20 @@ export class AgentRuntime {
         }
     }
 
-    /** Refresh the cached member list for a scope from the session store. */
-    _refreshScopeMembers(scopeId) {
+    /** Refresh the cached member list for a topic from the session store. */
+    _refreshTopicMembers(topicId) {
         if (!this._sessionStore) return;
-        const members = [scopeId];
+        const members = [topicId];
         for (const s of this._sessionStore.sessions) {
-            if (s.scope_id === scopeId) members.push(s.id);
+            if (s.topic_id === topicId) members.push(s.id);
         }
-        _scopeMembersCache[scopeId] = Array.from(new Set(members));
+        _topicMembersCache[topicId] = Array.from(new Set(members));
     }
 
-    /** Merge a scope's member sessions into one timeline (deduped + time-sorted). */
-    _mergedScopeMessages(scopeId) {
-        const cached = _scopeMembersCache[scopeId];
-        const ids = cached || [scopeId];
+    /** Merge a topic's member sessions into one timeline (deduped + time-sorted). */
+    _mergedTopicMessages(topicId) {
+        const cached = _topicMembersCache[topicId];
+        const ids = cached || [topicId];
         const merged = [];
         const seen = new Set();
         for (const sid of ids) {
@@ -446,7 +446,7 @@ export class AgentRuntime {
 function _newestDerived(list, beforeIds) {
     const fresh = (list || []).filter(
         (s) =>
-            (s.kind === "team" || (s.kind === "subagent" && !s.scope_id)) &&
+            (s.kind === "team" || (s.kind === "subagent" && !s.topic_id)) &&
             !beforeIds.has(s.id)
     );
     if (!fresh.length) return null;

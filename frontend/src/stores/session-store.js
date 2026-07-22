@@ -84,15 +84,15 @@ export class SessionStore {
 
     /**
      * Derived work shown in the TASKS & TEAMS group. Teams always show (they're
-     * scope roots the user can open as group chats). A subagent shows here only
+     * topic roots the user can open as group chats). A subagent shows here only
      * if it was dispatched DIRECTLY from the default entry (top-level single
-     * task, scope_id is NULL) — subagents living INSIDE a team (scope_id = the
+     * task, topic_id is NULL) — subagents living INSIDE a team (topic_id = the
      * team id) are team-internal execution detail and are viewed via the team's
-     * scope fan-in, so they're hidden from the top-level list.
+     * topic fan-in, so they're hidden from the top-level list.
      */
     get taskSessions() {
         return this.sortedSessions.filter(
-            (s) => s.kind === "team" || (s.kind === "subagent" && !s.scope_id)
+            (s) => s.kind === "team" || (s.kind === "subagent" && !s.topic_id)
         );
     }
 

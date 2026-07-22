@@ -20,15 +20,15 @@ export const ChatPane = observer(function ChatPane({ onToggleCollapse }) {
     const active = sessions.active;
     const sessionId = active?.id;
     const isTeam = active?.kind === "team";
-    // team session → scope view (fan-in); single session → scope null
-    const scopeId = isTeam ? sessionId : null;
+    // team session → topic view (fan-in); single session → topic null
+    const topicId = isTeam ? active?.topic_id : null;
 
-    // When the active session/scope changes, tell the runtime to switch what it's
+    // When the active session/topic changes, tell the runtime to switch what it's
     // observing (it loads history + rebuilds the SSE subscription).
     useEffect(() => {
-        if (sessionId) runtime.setActive(sessionId, scopeId);
+        if (sessionId) runtime.setActive(sessionId, topicId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sessionId, scopeId]);
+    }, [sessionId, topicId]);
 
     /** "New chat" = reset the default entry's history. */
     const handleNewChat = async () => {
