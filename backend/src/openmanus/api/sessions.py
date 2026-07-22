@@ -268,27 +268,29 @@ async def reset_session(session_id: str, request: Request) -> dict:
 
 @router.get("/{session_id}/mailbox")
 async def get_mailbox(session_id: str, unread_only: bool = False) -> dict:
-    """A participant's inbox (inter-agent messages). Powers the chat/task view."""
-    if not await session_store.get(session_id):
+    """An agent's inbox in this session's topic."""
+    s = await session_store.get(session_id)
+    if not s:
         raise HTTPException(status_code=404, detail="session not found")
     from ..mailbox import mailbox_store
 
-    msgs = await mailbox_store.inbox(session_id, unread_only=unread_only)
+    topic_id = s.get("topic_id") or "main"
+    agent_name = s.get("name") or "Manus"
+    msgs = await mailbox_store.inbox(topic_id, agent_name, unread_only=unread_only)
     return {"session_id": session_id, "messages": msgs}
 
 
 @router.get("/{session_id}/whiteboard")
 async def get_whiteboard(session_id: str) -> dict:
-    """Artefacts in this session's scope + the artefacts it authored."""
+    """Whiteboard notes in this session's topic."""
     s = await session_store.get(session_id)
     if not s:
         raise HTTPException(status_code=404, detail="session not found")
     from ..whiteboard import whiteboard_store
 
-    topic_id = s.get("topic_id")
-    in_scope = await whiteboard_store.list_in_scope(topic_id) if topic_id else []
-    authored = await whiteboard_store.list_by_author(session_id)
-    return {"session_id": session_id, "topic_id": topic_id, "in_scope": in_scope, "authored": authored}
+    topic_id = s.get("topic_id") or "main"
+    notes = await whiteboard_store.list_in_topic(topic_id)
+    return {"session_id": session_id, "topic_id": topic_id, "notes": notes}
 
 
 # --- Workdir validation (top-level, not under /sessions) --------------------

@@ -1,18 +1,17 @@
-"""Whiteboard: the inter-agent artefact space (the "communication" layer).
+"""Whiteboard: the topic-scoped task board.
 
-Distinct from the sandbox (the real filesystem where agents do their work):
-the whiteboard holds the *communication artefacts* — structured results an
-agent produces so OTHER agents can consume them. Per the unified model this is
-the single source of truth for async results: a sub-agent writes its outcome
-to the whiteboard, then sends the parent a short "done" mailbox message
-carrying just the whiteboard reference (not the content — no double storage).
+A flat, soft-structured list of notes attached to a topic. Each note records
+who wrote it (``author``), a free-form ``kind`` tag the agent picks (task /
+plan / research / result / …), a workflow ``status`` (pending / in_progress /
+finished / error), a short ``title`` and the full ``content`` body. The
+task-board view is computed on the fly from these notes; there is no separate
+state machine.
 
-SOFT-STRUCTURED (decision: not a hard schema): each artefact has free-form
-``content`` (text or JSON) plus light metadata — ``kind`` is a free tag the
-agent chooses (research / plan / diff-summary / …), NOT an enforced enum.
-The task-board view aggregates these on the fly from session status + kind; it
-is not a stored state machine. This mirrors how Claude Code's filesystem-
-artefact pattern stays flexible while avoiding the "game of telephone".
+This mirrors the soft-structured artefact pattern (Claude Code style): the
+whiteboard holds the *communication artefacts* an agent produces so OTHER
+agents can consume them, instead of stuffing the whole result through the
+conversation (the "game of telephone" problem). Soft-structured means
+``kind`` is a free tag, NOT an enforced enum.
 """
 
 from __future__ import annotations
@@ -28,99 +27,79 @@ logger = logging.getLogger(__name__)
 
 
 class WhiteboardStore:
-    """Async CRUD for whiteboard artefacts, scoped per team-space."""
+    """Async CRUD for whiteboard notes, scoped per topic."""
 
     async def create(
         self,
         *,
-        scope_id: str,
-        session_id: str,
-        kind: str | None = None,
+        topic_id: str,
+        author: str,
+        kind: str = "task",
+        status: str = "pending",
         title: str | None = None,
         content: str | None = None,
-        artefact_id: str | None = None,
+        note_id: str | None = None,
     ) -> dict[str, Any]:
-        aid = artefact_id or f"art-{uuid.uuid4().hex}"
+        nid = note_id or uuid.uuid4().hex
         async with aiosqlite.connect(_db_path()) as db:
             await db.execute(
-                """INSERT INTO whiteboard (id, scope_id, session_id, kind, title, content)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (aid, scope_id, session_id, kind, title, content),
+                """INSERT INTO whiteboard_note
+                       (id, topic_id, author, kind, status, title, content)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (nid, topic_id, author, kind, status, title, content),
             )
             await db.commit()
-        return await self.get(aid) or {"id": aid}
+        return await self.get(nid) or {"id": nid}
 
-    async def get(self, artefact_id: str) -> dict[str, Any] | None:
+    async def get(self, note_id: str) -> dict[str, Any] | None:
         async with aiosqlite.connect(_db_path()) as db:
             db.row_factory = aiosqlite.Row
             cur = await db.execute(
-                "SELECT * FROM whiteboard WHERE id = ?", (artefact_id,)
+                "SELECT * FROM whiteboard_note WHERE id = ?", (note_id,)
             )
             row = await cur.fetchone()
             return dict(row) if row else None
 
-    async def list_in_scope(
-        self, scope_id: str, kind: str | None = None
+    async def list_in_topic(
+        self,
+        topic_id: str,
+        status: str | None = None,
     ) -> list[dict[str, Any]]:
-        """All artefacts in a team-space, newest-first. Optionally filter by kind."""
+        """All notes in a topic, newest-first. Optionally filter by status."""
         async with aiosqlite.connect(_db_path()) as db:
             db.row_factory = aiosqlite.Row
-            if kind:
+            if status:
                 cur = await db.execute(
-                    "SELECT * FROM whiteboard WHERE scope_id = ? AND kind = ? "
+                    "SELECT * FROM whiteboard_note "
+                    "WHERE topic_id = ? AND status = ? "
                     "ORDER BY created_at DESC",
-                    (scope_id, kind),
+                    (topic_id, status),
                 )
             else:
                 cur = await db.execute(
-                    "SELECT * FROM whiteboard WHERE scope_id = ? "
+                    "SELECT * FROM whiteboard_note "
+                    "WHERE topic_id = ? "
                     "ORDER BY created_at DESC",
-                    (scope_id,),
+                    (topic_id,),
                 )
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
 
-    async def list_by_author(self, session_id: str) -> list[dict[str, Any]]:
-        """All artefacts produced BY a given participant."""
-        async with aiosqlite.connect(_db_path()) as db:
-            db.row_factory = aiosqlite.Row
-            cur = await db.execute(
-                "SELECT * FROM whiteboard WHERE session_id = ? "
-                "ORDER BY created_at DESC",
-                (session_id,),
-            )
-            rows = await cur.fetchall()
-            return [dict(r) for r in rows]
-
-    async def update(
-        self,
-        artefact_id: str,
-        *,
-        content: str | None = None,
-        title: str | None = None,
+    async def update_status(
+        self, note_id: str, status: str
     ) -> dict[str, Any] | None:
-        sets: list[str] = []
-        params: list[Any] = []
-        if content is not None:
-            sets.append("content = ?")
-            params.append(content)
-        if title is not None:
-            sets.append("title = ?")
-            params.append(title)
-        if not sets:
-            return await self.get(artefact_id)
-        params.append(artefact_id)
         async with aiosqlite.connect(_db_path()) as db:
             await db.execute(
-                f"UPDATE whiteboard SET {', '.join(sets)} WHERE id = ?", params
+                "UPDATE whiteboard_note SET status = ? WHERE id = ?",
+                (status, note_id),
             )
             await db.commit()
-        return await self.get(artefact_id)
+        return await self.get(note_id)
 
-    async def delete(self, artefact_id: str) -> bool:
+    async def delete(self, note_id: str) -> bool:
         async with aiosqlite.connect(_db_path()) as db:
             cur = await db.execute(
-                "DELETE FROM whiteboard WHERE id = ?", (artefact_id,)
+                "DELETE FROM whiteboard_note WHERE id = ?", (note_id,)
             )
             await db.commit()
             return cur.rowcount > 0

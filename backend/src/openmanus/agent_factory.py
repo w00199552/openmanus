@@ -32,8 +32,9 @@ from .store import get_checkpointer
 from .tool_loader import tool_loader
 from .tools.dispatch_tool import make_dispatch_tool
 from .tools.mailbox_tools import make_read_mailbox_tool, make_send_message_tool
-from .tools.whiteboard_tools import (
+from .tools.whiteboard_tool import (
     make_whiteboard_read_tool,
+    make_whiteboard_update_status_tool,
     make_whiteboard_write_tool,
 )
 
@@ -162,16 +163,20 @@ def _resolve_session_id(config: Any) -> str:
 
 
 def _resolve_topic_id(config: Any) -> str | None:
-    """Extract the current topic_id from a RunnableConfig.
-
-    Phase 1 change: renamed from _resolve_scope_id; reads
-    ``config["configurable"]["topic_id"]``.
-    """
+    """Extract the current topic_id from a RunnableConfig."""
     try:
         tid = ((config or {}).get("configurable") or {}).get("topic_id")
         return tid if tid else None
     except Exception:  # noqa: BLE001
         return None
+
+
+def _resolve_agent_name(config: Any) -> str:
+    """Extract the current agent_name from a RunnableConfig."""
+    try:
+        return ((config or {}).get("configurable") or {}).get("agent_name") or "unknown"
+    except Exception:  # noqa: BLE001
+        return "unknown"
 
 
 def _resolve_tool_whitelist(declared: list[str] | set[str]) -> tuple[frozenset[str], frozenset[str], list[str]]:
@@ -229,10 +234,12 @@ def _build_tools(tool_names: list[str], workdir: str, agent_name: str = "") -> l
             tools.append(make_read_mailbox_tool())
         elif tname == "whiteboard_write":
             tools.append(make_whiteboard_write_tool(
-                session_id_fn=_resolve_session_id, scope_id_fn=_resolve_topic_id,
+                topic_id_fn=_resolve_topic_id, author_fn=_resolve_agent_name,
             ))
+        elif tname == "whiteboard_update_status":
+            tools.append(make_whiteboard_update_status_tool())
         elif tname == "whiteboard_read":
-            tools.append(make_whiteboard_read_tool(scope_id_fn=_resolve_topic_id))
+            tools.append(make_whiteboard_read_tool(topic_id_fn=_resolve_topic_id))
         else:
             # 2. user-defined tool (from ~/.openmanus/tools/)
             user_tool = tool_loader.get(tname)

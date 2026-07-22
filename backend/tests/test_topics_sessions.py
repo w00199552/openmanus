@@ -32,20 +32,17 @@ from openmanus.config import settings  # noqa: E402
 
 # ─── fixtures ───────────────────────────────────────────────────────────────
 
-_DB_TEMPDIR = tempfile.mkdtemp(prefix="openmanus_phase1_test_")
-
 
 @pytest.fixture(autouse=True)
 def _isolate_db():
-    """Point settings.database_url at a temp DB for the duration of each test.
+    """Point settings.database_url at a FRESH temp DB for each test.
 
-    _db_path() reads settings.database_url on every call (not cached at import),
-    so monkeypatching the settings object works. We set it once for the whole
-    test module's lifetime (module-scoped temp dir) to avoid cross-test
-    interference, then init_db() creates tables in it.
+    A new tempdir per test avoids schema conflicts when the test suite's
+    shared DB (./data/sessions.db) has an older schema.
     """
     saved = settings.database_url
-    settings.database_url = f"sqlite:///{Path(_DB_TEMPDIR) / 'checkpoints.db'}"
+    tmpdir = tempfile.mkdtemp(prefix="openmanus_test_")
+    settings.database_url = f"sqlite:///{Path(tmpdir) / 'checkpoints.db'}"
     yield
     settings.database_url = saved
 

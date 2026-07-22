@@ -58,35 +58,32 @@ class ChannelRegistry:
     def is_finished(self, session_id: str) -> bool:
         return session_id in self._finished
 
-    async def _push_live(self, session_id: str, msg_dict: dict) -> None:
-        """Drop a mailbox message onto a recipient's channel as a live frame.
+    async def _push_live(self, topic_id: str, to_agent: str, msg_dict: dict) -> None:
+        """Push a mailbox message to all live channels of the recipient agent.
 
-        This is the push half of hybrid mailbox persistence. The frame is a
-        ``mailbox`` kind so the frontend can render it as an inter-agent chat
-        bubble (and a running agent can consume it as input). We also resolve
-        the sender's role name (from the session store) so the frontend can show
-        "coder" instead of a raw "sess-xxxx" id.
+        Finds all sessions of (topic_id, to_agent) that have a live SSE listener
+        and drops the mailbox frame onto their channels. This is the push half
+        of hybrid mailbox persistence — the DB write is durable regardless, but
+        this gives real-time delivery to connected frontends.
         """
-        if not self.has(session_id):
-            return  # no live listener; the DB write alone is enough
-        # Resolve the sender's display name (role) for nicer UI labels.
-        from_name = msg_dict.get("from_name")
-        if not from_name and msg_dict.get("from_session_id"):
-            try:
-                from openmanus.db import session_store as _ss
-                row = await _ss.get(msg_dict["from_session_id"])
-                from_name = (row or {}).get("name") if row else None
-            except Exception:  # noqa: BLE001
-                pass
-        enriched = dict(msg_dict)
-        if from_name:
-            enriched["from_name"] = from_name
-        ev = {
-            "kind": "mailbox",
-            "session_id": session_id,
-            "mailbox": enriched,
-        }
-        await self.get_queue(session_id).put(frame(ev))
+        from .db import session_store as _ss
+        try:
+            members = await _ss.list_in_topic(topic_id)
+        except Exception:  # noqa: BLE001
+            return
+        for s in members:
+            if s.get("name") != to_agent:
+                continue
+            sid = s["id"]
+            if not self.has(sid):
+                continue
+            enriched = dict(msg_dict)
+            ev = {
+                "kind": "mailbox",
+                "session_id": sid,
+                "mailbox": enriched,
+            }
+            await self.get_queue(sid).put(frame(ev))
 
 
 # Module-level singleton.

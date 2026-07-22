@@ -72,28 +72,28 @@ CREATE INDEX IF NOT EXISTS idx_sessions_topic ON sessions(topic_id);
 
 CREATE TABLE IF NOT EXISTS mailboxes (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id      TEXT NOT NULL,
-    from_session_id TEXT NOT NULL,
+    topic_id        TEXT NOT NULL,
+    from_agent      TEXT NOT NULL,
+    to_agent        TEXT NOT NULL,
     kind            TEXT NOT NULL,
     content         TEXT,
     whiteboard_ref  TEXT,
     read            INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_mailbox_session ON mailboxes(session_id);
-CREATE INDEX IF NOT EXISTS idx_mailbox_from    ON mailboxes(from_session_id);
+CREATE INDEX idx_mailbox_recipient ON mailboxes(topic_id, to_agent);
 
-CREATE TABLE IF NOT EXISTS whiteboard (
+CREATE TABLE IF NOT EXISTS whiteboard_note (
     id          TEXT PRIMARY KEY,
-    scope_id    TEXT NOT NULL,
-    session_id  TEXT NOT NULL,
+    topic_id    TEXT NOT NULL,
+    author      TEXT NOT NULL,
     kind        TEXT,
+    status      TEXT NOT NULL DEFAULT 'pending',
     title       TEXT,
     content     TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_whiteboard_scope   ON whiteboard(scope_id);
-CREATE INDEX IF NOT EXISTS idx_whiteboard_session ON whiteboard(session_id);
+CREATE INDEX idx_wb_note_topic ON whiteboard_note(topic_id);
 """
 
 
@@ -353,16 +353,6 @@ class SessionStore:
         async with aiosqlite.connect(_db_path()) as db:
             cur = await db.execute(
                 "DELETE FROM sessions WHERE id = ?", (session_id,)
-            )
-            # Clean up the participant's mailbox + whiteboard artefacts too.
-            # NOTE: mailboxes/whiteboard schema still uses session_id (will be
-            # changed to agent_name in a later phase). Left as-is for now.
-            await db.execute(
-                "DELETE FROM mailboxes WHERE session_id = ? OR from_session_id = ?",
-                (session_id, session_id),
-            )
-            await db.execute(
-                "DELETE FROM whiteboard WHERE session_id = ?", (session_id,)
             )
             await db.commit()
             return cur.rowcount > 0

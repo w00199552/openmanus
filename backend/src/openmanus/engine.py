@@ -354,12 +354,10 @@ class StreamEngine:
                 ))
                 self._tasks.add(task)
                 task.add_done_callback(self._tasks.discard)
-            # After this turn ends, check for unread mailbox messages that
-            # arrived WHILE we were running (queued, not wake-up'd). If any,
-            # start a new turn to process them.
-            row = await session_store.get(session_id)
-            if row and row.get("status") != "running":
-                await self._start_turn_with_inbox(session_id, row)
+            # After this session ends, check mailbox for pending messages.
+            # If any arrived while we were running, start a new session to
+            # process them (pull path — complements the push path in _wakeup).
+            await self._drain_and_start_session(ctx.topic_id, ctx.agent_name)
         return final
 
     async def _start_and_record(
@@ -376,25 +374,23 @@ class StreamEngine:
     async def _record_result(
         self, *, topic_id, target_session_id, caller_session_id, target_agent, answer,
     ):
-        # Entry agent (Manus, kind="root") is a pure router: it dispatches once
-        # and stops. It must NOT receive result mail — otherwise mailbox.send
-        # would trigger _wakeup → _start_turn_with_inbox and Manus would
-        # re-dispatch in a loop. The user watches the dispatched child session
-        # directly (session list shows child sessions like chat-app conversations).
+        """Record a dispatched agent's result: write whiteboard note + mail caller."""
         caller = await session_store.get(caller_session_id)
         if caller and caller.get("kind") == "root":
-            return
+            return  # entry agent (Manus) is a pure router, doesn't receive results
         if not topic_id:
             return
+        caller_name = (caller or {}).get("name") or "unknown"
         try:
             art = await whiteboard_store.create(
-                scope_id=topic_id, session_id=target_session_id,
-                kind="result", title=f"{target_agent} result",
+                topic_id=topic_id, author=target_agent,
+                kind="result", status="finished",
+                title=f"{target_agent} result",
                 content=answer[:2000] or "(no output)",
             )
             await mailbox_store.send(
-                to_session_id=caller_session_id,
-                from_session_id=target_session_id,
+                topic_id=topic_id,
+                from_agent=target_agent, to_agent=caller_name,
                 kind="result",
                 content=f"{target_agent} finished",
                 whiteboard_ref=art["id"],
@@ -404,47 +400,54 @@ class StreamEngine:
 
     # ── message-driven wake-up ──────────────────────────────────────────────
 
-    async def _wakeup(self, to_session_id: str, from_session_id: str) -> None:
-        """Wake up an idle agent when a mailbox message arrives."""
-        row = await session_store.get(to_session_id)
-        if not row:
-            return
-        if row.get("status") == "running":
-            return  # agent is busy; message will queue
-        await self._start_turn_with_inbox(to_session_id, row)
+    async def _wakeup(self, topic_id: str, agent_name: str) -> None:
+        """Wake up an idle agent when a mailbox message arrives (push path).
 
-    async def _start_turn_with_inbox(self, session_id: str, row: dict) -> None:
-        """Build a prompt from unread mailbox messages + start a turn."""
-        msgs = await mailbox_store.inbox(session_id, unread_only=True)
-        if not msgs:
-            return
-        # Mark them read so the next wake-up doesn't re-process them.
-        await mailbox_store.mark_read(session_id, [m["id"] for m in msgs])
-        # Build a prompt summarising the messages.
-        lines = []
-        for m in msgs:
-            sender = m.get("from_name") or str(m.get("from_session_id", "?"))[:8]
-            if m.get("whiteboard_ref"):
-                lines.append(f"[{m['kind']}] from {sender}: {m.get('content','')} (whiteboard: {m['whiteboard_ref']})")
-            else:
-                lines.append(f"[{m['kind']}] from {sender}: {m.get('content','')}")
-        prompt = ("You received these messages:\n" + "\n".join(lines)
-                  + "\n\nRead them and decide: respond to the user, do more work, "
-                    "or stop. Do NOT re-dispatch a task that has already reported "
-                    "a result.")
-        role = row.get("name") or "assistant"
-        try:
-            await self.run(
-                session_id=session_id, prompt=prompt,
-                speaker=role, mode="async",
+        Called by mailbox.send via the wakeup callback. If the agent is idle
+        (not running), drain its inbox and start a new session. If busy, the
+        message queues and will be picked up by _drain_and_start_session when
+        the current session ends (_stream finally).
+        """
+        sessions = await session_store.list_in_topic(topic_id)
+        agent_sessions = [s for s in sessions if s.get("name") == agent_name]
+        if not agent_sessions:
+            return  # agent has no session yet
+        latest = agent_sessions[0]  # list_in_topic returns newest first
+        if latest.get("status") == "running":
+            return  # busy; mail will be drained when session ends
+        await self._drain_and_start_session(topic_id, agent_name)
+
+    async def _drain_and_start_session(self, topic_id: str, agent_name: str) -> None:
+        """Check mailbox for unread messages; if any, start a new session.
+
+        Uses mailbox.check_and_drain which atomically reads + marks read under
+        a lock (prevents the wakeup/check race). The on_messages callback
+        builds the inbox prompt and launches a fresh session.
+        """
+        async def on_messages(msgs):
+            lines = []
+            for m in msgs:
+                sender = m.get("from_agent", "?")
+                lines.append(f"- from {sender}: {m.get('content', '')}")
+            prompt = ("你收到了以下新消息:\n" + "\n".join(lines)
+                      + "\n\n请读取并处理。")
+            session = await session_store.create(
+                topic_id=topic_id, kind="subagent", name=agent_name,
+                title=f"{agent_name} mailbox",
             )
-        except Exception:  # noqa: BLE001
-            logger.exception("wake-up turn failed for %s", session_id)
+            await session_store.update(session["id"], status="running")
+            task = asyncio.create_task(self._stream(
+                session_id=session["id"], prompt=prompt, speaker=agent_name,
+            ))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+
+        await mailbox_store.check_and_drain(topic_id, agent_name, on_messages)
 
 
 # Module-level singleton.
 engine = StreamEngine()
 
-# Register the wake-up handler so mailbox.send can trigger agent activation.
-from .mailbox import set_wakeup_handler  # noqa: E402
-set_wakeup_handler(engine._wakeup)
+# Register the wake-up callback so mailbox.send can trigger agent activation.
+from .mailbox import set_wakeup_callback  # noqa: E402
+set_wakeup_callback(engine._wakeup)

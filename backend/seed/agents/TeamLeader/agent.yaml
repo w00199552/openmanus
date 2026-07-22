@@ -6,6 +6,7 @@ tools:
 - send_message
 - read_mailbox
 - whiteboard_write
+- whiteboard_update_status
 - whiteboard_read
 skills: []
 sub_agents: []
