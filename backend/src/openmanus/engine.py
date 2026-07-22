@@ -84,6 +84,32 @@ class _StreamState:
         self.open_tool_calls: set[str] = set()
         self.open_steps: set[str] = set()
 
+    def close_turn(self, *, session_id: str, speaker: str) -> list[str]:
+        """Close the current model-turn message (if any) and reset for the next.
+
+        A LangGraph agent run loops: AIMessage (model output) → ToolMessage
+        (tool result) → AIMessage (next model output) → ... Each AIMessage is a
+        DISTINCT model call with its own thinking/text. Without closing the
+        current turn at the ToolMessage boundary, the next model call's events
+        reuse the same assistant_message_id — which makes the frontend append
+        the second thinking to the first (they should be separate bubbles).
+
+        Called when a ToolMessage arrives: emit message_end for the open
+        message, then clear assistant_message_id + message_open so the next
+        AIMessageChunk allocates a fresh id.
+        """
+        from . import event_schema as E
+        frames: list[str] = []
+        if self.message_open and self.assistant_message_id:
+            frames.append(E.frame(E.ev_message_end(
+                session_id=session_id,
+                message_id=self.assistant_message_id,
+                speaker=speaker,
+            )))
+        self.assistant_message_id = None
+        self.message_open = False
+        return frames
+
 
 def convert_chunk(chunk, st, *, session_id, speaker):
     from langchain_core.messages import AIMessageChunk, ToolMessage
@@ -169,6 +195,11 @@ def convert_chunk(chunk, st, *, session_id, speaker):
         frames.append(E.frame(E.ev_tool_call_end(
             session_id=session_id, call_id=tcid,
         )))
+        # This ToolMessage completes one model turn; the next AIMessageChunk is
+        # a fresh model call. Close the current message (emit message_end) and
+        # reset assistant_message_id so the next thinking/text opens a NEW
+        # bubble instead of appending to the previous one.
+        frames.extend(st.close_turn(session_id=session_id, speaker=speaker))
         return frames
 
     return []
