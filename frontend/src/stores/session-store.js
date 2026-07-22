@@ -83,16 +83,14 @@ export class SessionStore {
     }
 
     /**
-     * Derived work shown in the TASKS & TEAMS group. Teams always show (they're
-     * topic roots the user can open as group chats). A subagent shows here only
-     * if it was dispatched DIRECTLY from the default entry (top-level single
-     * task, topic_id is NULL) — subagents living INSIDE a team (topic_id = the
-     * team id) are team-internal execution detail and are viewed via the team's
-     * topic fan-in, so they're hidden from the top-level list.
+     * Derived work shown in the TASKS & TEAMS group. Teams and subagents both
+     * show here — they represent dispatched work the user can click into.
+     * (TODO: eventually this should show TOPICS, not individual sessions.
+     * For now we show non-root sessions so dispatched agents appear.)
      */
     get taskSessions() {
         return this.sortedSessions.filter(
-            (s) => s.kind === "team" || (s.kind === "subagent" && !s.topic_id)
+            (s) => s.kind === "team" || s.kind === "subagent"
         );
     }
 

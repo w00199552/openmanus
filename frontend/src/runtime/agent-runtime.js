@@ -329,7 +329,7 @@ export class AgentRuntime {
         const child = _newestDerived(list, before);
         if (child) {
             // switching view also rebuilds the subscription + loads history
-            this.setActive(child.id, child.kind === "team" ? child.id : null);
+            this.setActive(child.id, child.topic_id || null);
             this._sessionStore.select(child.id);
         }
     }
@@ -446,7 +446,7 @@ export class AgentRuntime {
 function _newestDerived(list, beforeIds) {
     const fresh = (list || []).filter(
         (s) =>
-            (s.kind === "team" || (s.kind === "subagent" && !s.topic_id)) &&
+            (s.kind === "team" || s.kind === "subagent") &&
             !beforeIds.has(s.id)
     );
     if (!fresh.length) return null;
