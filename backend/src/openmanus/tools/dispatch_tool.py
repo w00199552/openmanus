@@ -141,12 +141,21 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
                 f"background. Tell the user they can open team {team_id[:12]}."
             )
 
-        # ── specialist (Coder/Researcher): create a session ──
-        topic_id = caller_topic_id
+        # ── specialist (Coder/Researcher): create a new topic + session ──
+        # When Manus dispatches a specialist, a NEW topic is created (each task
+        # gets its own topic, visible as a separate entry in the sessionList).
+        # When TeamLeader dispatches inside an existing topic, it reuses the
+        # caller's topic_id (specialists share the team's topic).
+        if caller_row and caller_row.get("kind") == "root":
+            # Entry agent (Manus) → new topic for this task
+            topic = await topic_store.create(
+                title=task[:60] or f"{target_agent} task", workdir=caller_workdir,
+            )
+            topic_id = topic["id"]
+        else:
+            # Inside a team → reuse the team's topic
+            topic_id = caller_topic_id
 
-        # Specialists write directly into the caller's workdir — no per-agent
-        # subdirectory. This matches the TeamLeader branch and keeps all
-        # artifacts in one place unless the task itself requests otherwise.
         child = await session_store.create(
             kind="subagent",
             name=target_agent,
