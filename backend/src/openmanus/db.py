@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS mailboxes (
     read            INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX idx_mailbox_recipient ON mailboxes(topic_id, to_agent);
+CREATE INDEX IF NOT EXISTS idx_mailbox_recipient ON mailboxes(topic_id, to_agent);
 
 CREATE TABLE IF NOT EXISTS whiteboard_note (
     id          TEXT PRIMARY KEY,
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS whiteboard_note (
     content     TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX idx_wb_note_topic ON whiteboard_note(topic_id);
+CREATE INDEX IF NOT EXISTS idx_wb_note_topic ON whiteboard_note(topic_id);
 """
 
 
