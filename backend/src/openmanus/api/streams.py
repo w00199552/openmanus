@@ -12,9 +12,9 @@ Two responsibilities, cleanly separated:
   lifecycle issues), and the GET is a pure SSE subscription.
 
 * ``GET /stream`` — subscribe to a live event stream. Two query modes:
-    - ``?scope=<team_id>``     → fan-in the whole team (the scope session + all
-                                its members, dynamically expanded as new
-                                sub-agents are spawned mid-run).
+    - ``?topic=<topic_id>``    → fan-in the whole topic (all member sessions,
+                                dynamically expanded as new sub-agents are
+                                spawned mid-run).
     - ``?sessions=id1,id2,...` → explicit set of sessions to merge.
   Every event carries ``session_id`` + ``speaker`` so a fanned-in stream is
   self-attributing: the client splits frames back into per-participant views.
@@ -36,7 +36,7 @@ from typing import Any
 from .. import event_schema as E
 from ..channels import channels, drain_single, drain_sessions, fan_in
 from ..config import settings
-from ..db import session_store
+from ..db import session_store, topic_store
 from ..engine import engine
 
 logger = logging.getLogger(__name__)
@@ -99,6 +99,9 @@ async def cd_session(session_id: str, body: CdBody) -> dict:
     # value so the next message picks it up.
     await session_store.update(session_id, workdir=str(target))
     settings.workdir = str(target)
+    # Propagate workdir to the session's topic (members of the topic inherit it).
+    if s.get("topic_id"):
+        await topic_store.update_workdir(s["topic_id"], str(target))
 
     return {"ok": True, "workdir": str(target), "action": "cd"}
 
@@ -166,7 +169,7 @@ async def post_message(
 
 
 async def _sse_byte_stream(
-    scope: str | None, sessions: list[str] | None
+    topic: str | None, sessions: list[str] | None
 ) -> Any:
     """Yield already-framed SSE byte strings (``data: {...}\\n\\n``).
 
@@ -177,8 +180,8 @@ async def _sse_byte_stream(
     the raw frames through a plain StreamingResponse flushes each one as it
     arrives.
     """
-    if scope:
-        async for raw in fan_in(scope, scope):
+    if topic:
+        async for raw in fan_in(topic_id=topic):
             yield raw
         return
     if sessions:
@@ -197,18 +200,18 @@ _SSE_HEADERS = {
 
 @router.get("/stream")
 async def stream(
-    scope: str | None = Query(default=None),
+    topic: str | None = Query(default=None),
     sessions: str | None = Query(default=None),
 ) -> StreamingResponse:
     """Live SSE event stream.
 
-    Pick ONE mode (mutually exclusive; scope wins if both given):
-    - ``?scope=<team_id>``    → team fan-in (dynamically expands members).
+    Pick ONE mode (mutually exclusive; topic wins if both given):
+    - ``?topic=<topic_id>``   → topic fan-in (dynamically expands members).
     - ``?sessions=id1,id2``   → explicit session set.
     """
     sess_list = [s.strip() for s in sessions.split(",")] if sessions else None
     return StreamingResponse(
-        _sse_byte_stream(scope, sess_list),
+        _sse_byte_stream(topic, sess_list),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
     )

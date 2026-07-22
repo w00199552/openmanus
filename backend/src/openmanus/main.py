@@ -37,7 +37,7 @@ from .agent_loader import agent_loader
 from .api import agents, files, sessions, skills, streams, tools
 from .api.sessions import workdir_router
 from .config import settings
-from .db import init_db, session_store, topic_store
+from .db import init_db, topic_store
 
 logging.basicConfig(
     level=logging.INFO,

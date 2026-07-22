@@ -33,13 +33,19 @@ from langchain_core.tools.base import InjectedToolArg
 from pydantic import BaseModel, Field
 
 from ..agent_loader import agent_loader
-from ..db import session_store
+from ..db import session_store, topic_store
 
 logger = logging.getLogger(__name__)
 
 
-def _config_session_id(config: RunnableConfig | None) -> str:
-    return ((config or {}).get("configurable") or {}).get("thread_id") or "unknown"
+def _resolve_session_id(config: RunnableConfig | None) -> str:
+    """Resolve the current session_id from a RunnableConfig.
+
+    Thin lazy wrapper around ``agent_factory._resolve_session_id`` to avoid an
+    import cycle (agent_factory imports this module at its top level).
+    """
+    from ..agent_factory import _resolve_session_id as _resolve
+    return _resolve(config)
 
 
 class DispatchInput(BaseModel):
@@ -101,21 +107,24 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
             return f"Unknown agent '{target_agent}'. Available: {', '.join(agent_loader.all_names())}."
         from ..engine import engine  # lazy: avoid import cycle
 
-        caller_session_id = _config_session_id(config)
+        caller_session_id = _resolve_session_id(config)
         caller_row = await session_store.get(caller_session_id)
-        caller_scope = (caller_row or {}).get("scope_id")
+        caller_topic_id = (caller_row or {}).get("topic_id")
         # Inherit caller's workdir (supports /cd command — child works in the
         # same directory as the caller, not the global settings.workdir).
         caller_workdir = (caller_row or {}).get("workdir") or workdir
 
         # ── TeamLeader: create a team session (scope root) ──
         if target_agent.lower() == "teamleader":
+            topic = await topic_store.create(
+                title=task[:60] or "team task", workdir=caller_workdir,
+            )
             team = await session_store.create(
                 kind="team",
                 name=target_agent,
                 title=task[:60] or "team task",
                 workdir=caller_workdir,
-                scope_id=None,
+                topic_id=topic["id"],
                 metadata={
                     "parent": caller_session_id,
                     "members": ["TeamLeader", "Researcher", "Coder"],
@@ -133,10 +142,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
             )
 
         # ── specialist (Coder/Researcher): create a session ──
-        if caller_row and caller_row.get("kind") == "team":
-            scope_id = caller_session_id
-        else:
-            scope_id = caller_scope
+        topic_id = caller_topic_id
 
         # Specialists write directly into the caller's workdir — no per-agent
         # subdirectory. This matches the TeamLeader branch and keeps all
@@ -146,7 +152,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
             name=target_agent,
             title=task[:60] or f"{target_agent} task",
             workdir=caller_workdir,
-            scope_id=scope_id,
+            topic_id=topic_id,
             metadata={
                 "role": target_agent,
                 "parent": caller_session_id,
@@ -158,7 +164,7 @@ def make_dispatch_tool(*, workdir: str, **_kw) -> BaseTool:
             caller_session_id=caller_session_id,
             target_agent=target_agent,
             task=task,
-            scope_id=scope_id,
+            topic_id=topic_id,
             target_session_id=child_id,
         )
         return (

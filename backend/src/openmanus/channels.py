@@ -1,15 +1,15 @@
-"""Channel registry: one live event queue per session + scope fan-in.
+"""Channel registry: one live event queue per session + topic fan-in.
 
 Replaces the old SingleRegistry + TeamRegistry (two near-duplicate
 dict[id]->Queue). Now there is ONE registry: every agent participant gets a
 channel (an ``asyncio.Queue``) the moment it's needed, and the SSE endpoint
 drains it.
 
-SCOPE FAN-IN (decision 1): "watch a team" = subscribe to the TeamLeader's
-channel AND every descendant participant's channel, then forward every frame
-verbatim in arrival order. No cross-session reordering, no merging — each
-frame already carries ``session_id`` so the frontend splits it back into the
-right participant's message list.
+TOPIC FAN-IN (decision 1): "watch a topic" = subscribe to every participant
+session's channel in that topic, then forward every frame verbatim in arrival
+order. No cross-session reordering, no merging — each frame already carries
+``session_id`` so the frontend splits it back into the right participant's
+message list.
 
 Also wires the live half of mailbox hybrid persistence: importing this module
 registers a pusher with ``mailbox`` so a ``mailbox.send`` to a running agent
@@ -154,37 +154,47 @@ async def drain_sessions(
 
 
 async def fan_in(
-    scope_id: str | None,
-    focus_session_id: str,
+    topic_id: str | None,
+    focus_session_id: str | None = None,
 ) -> AsyncIterator[str]:
-    """Merge frames from a focus session (+ its scope siblings) into one stream.
+    """Merge frames from a focus session (+ its topic siblings) into one stream.
 
-    * ``scope_id is None`` → single-session view: just drain ``focus_session_id``.
-    * ``scope_id`` set → team view: drain the scope session itself PLUS every
-      participant in that scope. The member list is **re-scanned periodically**
-      so sub-agents spawned mid-stream (TeamLeader delegating Researcher/Coder)
-      are picked up automatically without the client reconnecting.
+    * ``topic_id is None`` and ``focus_session_id`` set → single-session view:
+      just drain ``focus_session_id``.
+    * ``topic_id`` set → topic view: drain every participant in that topic. The
+      member list is **re-scanned periodically** so sub-agents spawned mid-stream
+      (TeamLeader delegating Researcher/Coder) are picked up automatically
+      without the client reconnecting.
 
-    TERMINATION: the stream ends when the FOCUS session (the TeamLeader /
-    orchestrator) signals done — when the orchestrator is finished, the team's
-    work is finished. Members may still be draining when we close; that's fine,
-    the client will have seen their frames already.
+    TERMINATION: if ``focus_session_id`` is provided, the stream ends when that
+    session (the TeamLeader / orchestrator) signals done — when the orchestrator
+    is finished, the topic's work is finished. If ``focus_session_id`` is None,
+    the stream ends only when EVERY known member is done (used when the SSE
+    endpoint only knows the topic, not a specific orchestrator session).
     """
-    if scope_id is None:
+    if topic_id is None and focus_session_id is not None:
         async for f in drain_single(channels.get_queue(focus_session_id)):
             yield f
         return
 
-    # Team view: dynamically expand members as they're created.
-    known: set[str] = {focus_session_id}
-    focus_done = False
+    if topic_id is None:
+        # Nothing to drain (no topic, no focus). Just close.
+        yield "data: [DONE]\n\n"
+        return
 
-    while not focus_done:
-        # Re-scan scope membership each round so newly-spawned agents join.
-        members = await session_store.list_in_scope(scope_id)
+    # Topic view: dynamically expand members as they're created.
+    known: set[str] = set()
+    if focus_session_id:
+        known.add(focus_session_id)
+    focus_done = False
+    all_done = False
+
+    while (focus_session_id and not focus_done) or (not focus_session_id and not all_done):
+        # Re-scan topic membership each round so newly-spawned agents join.
+        members = await session_store.list_in_topic(topic_id)
         known.update(s["id"] for s in members)
 
-        # Drain one round of frames from all known sessions; gate on focus.
+        # Drain one round of frames from all known sessions.
         tasks: dict[asyncio.Task, str] = {}
         for sid in known:
             tasks[asyncio.ensure_future(channels.get_queue(sid).get())] = sid
@@ -199,5 +209,10 @@ async def fan_in(
             yield item
         for t in pending:
             t.cancel()
+        # No-focus mode: terminate once every known member is done.
+        if not focus_session_id:
+            seen_done = {sid for sid in known if channels.is_finished(sid)}
+            if known and seen_done == known:
+                all_done = True
 
     yield "data: [DONE]\n\n"

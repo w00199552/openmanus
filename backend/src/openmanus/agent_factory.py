@@ -13,6 +13,7 @@ The checkpointer is SHARED (one DB) but each run uses its own thread_id
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -113,6 +114,38 @@ def compute_thread_id(topic_id: str, agent_name: str) -> str:
     Not stored in the DB — computed on the fly in build_agent / engine.
     """
     return f"{topic_id}:{agent_name}"
+
+
+@dataclass(frozen=True)
+class AgentContext:
+    """Runtime context for one agent execution (one session).
+
+    Assembled once by ``build_agent`` from the session row, this bundles every
+    identifier the engine / tools / LangGraph need — so nothing downstream has
+    to re-query the DB or reverse-engineer IDs.
+
+    Attributes:
+        session_id: the execution id (fresh per run).
+        topic_id: the topic this session belongs to.
+        agent_name: the agent's role name (e.g. "Coder").
+        thread_id: the checkpointer key (``f"{topic_id}:{agent_name}"``) —
+            shared across the agent's multiple sessions in the same topic.
+        workdir: the working directory for this session.
+    """
+    session_id: str
+    topic_id: str
+    agent_name: str
+    thread_id: str
+    workdir: str
+
+    def to_config(self) -> dict[str, Any]:
+        """Build the LangGraph RunnableConfig with all IDs in configurable."""
+        return {"configurable": {
+            "thread_id": self.thread_id,
+            "session_id": self.session_id,
+            "topic_id": self.topic_id,
+            "agent_name": self.agent_name,
+        }}
 
 
 def _resolve_session_id(config: Any) -> str:
@@ -234,21 +267,21 @@ def _resolve_prompt(raw_prompt: str, self_name: str) -> str:
     return raw_prompt.replace("{{AGENTS}}", "\n".join(lines))
 
 
-async def build_agent(session_id: str) -> CompiledStateGraph:
-    """Create a FRESH, independent agent for a session.
+async def build_agent(session_id: str) -> tuple[CompiledStateGraph, AgentContext]:
+    """Create a FRESH, independent agent + context for a session.
 
-    Reads the session's name + workdir + topic_id from the DB, then builds a
-    new CompiledStateGraph with its OWN checkpointer.
+    Reads the session's name + workdir + topic_id from the DB, builds a new
+    CompiledStateGraph with its OWN checkpointer, and assembles an
+    :class:`AgentContext` with all runtime IDs (thread_id, topic_id, ...).
 
-    thread_id (checkpointer key) is computed as ``f"{topic_id}:{name}"`` via
-    :func:`compute_thread_id`. The engine constructs the LangGraph config with
-    this thread_id (phase 2). This function reads topic_id from the session
-    row so the caller (engine) can compute thread_id without an extra DB query.
+    Returns ``(agent, ctx)`` so the caller has everything it needs without an
+    extra DB query: ``ctx.to_config()`` builds the LangGraph RunnableConfig,
+    ``ctx.thread_id`` is the checkpointer key, etc.
 
     Agent instances are NOT cached — every call creates a new one. The
-    checkpointer persists conversation history in the DB, so rebuilding
-    an agent does NOT lose context. Callers should close the agent after
-    use (see ``close_agent``).
+    checkpointer persists conversation history in the DB (keyed by thread_id),
+    so rebuilding an agent does NOT lose context. Callers should close the
+    agent after use (see ``close_agent``).
     """
     global _default_model
     if _default_model is None:
@@ -263,6 +296,14 @@ async def build_agent(session_id: str) -> CompiledStateGraph:
     if not name:
         name = "TeamLeader" if s.get("kind") == "team" else "Manus"
     workdir = s.get("workdir") or settings.workdir
+    topic_id = s.get("topic_id") or "main"
+    ctx = AgentContext(
+        session_id=session_id,
+        topic_id=topic_id,
+        agent_name=name,
+        thread_id=compute_thread_id(topic_id, name),
+        workdir=workdir,
+    )
 
     # Each agent gets its OWN checkpointer instance (own aiosqlite connection).
     own_checkpointer = await get_checkpointer()
@@ -301,7 +342,7 @@ async def build_agent(session_id: str) -> CompiledStateGraph:
         if sdir:
             skill_paths.append(str(sdir))
 
-    return create_deep_agent(
+    agent = create_deep_agent(
         model=_default_model,
         system_prompt=_resolve_prompt(cfg["prompt"], name),
         tools=tools,
@@ -314,6 +355,7 @@ async def build_agent(session_id: str) -> CompiledStateGraph:
         ],
         name=name,
     )
+    return agent, ctx
 
 
 async def close_agent(agent: CompiledStateGraph) -> None:

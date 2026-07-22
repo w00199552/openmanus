@@ -285,7 +285,7 @@ class StreamEngine:
         caller_session_id: str,
         target_agent: str,
         task: str,
-        scope_id: str | None,
+        topic_id: str,
         target_session_id: str,
     ) -> str:
         """Run a DISPATCHED agent: stream it + record outcome for the caller.
@@ -294,21 +294,7 @@ class StreamEngine:
         astream finishes (no concurrent astreams → no cross-talk). When done,
         it writes the result to the whiteboard + sends the caller a mailbox
         "result" message. The caller picks that up on its NEXT turn.
-
-        NOTE: dispatch and mailbox are SEPARATE concerns. Dispatch is a control
-        flow (create child session + run it with a Task prompt); mailbox is for
-        peer-to-peer chat (send_message / read_mailbox tools). We deliberately
-        do NOT mailbox.send a "dispatch" message to the child here — doing so
-        would trigger _wakeup on the idle child and start a duplicate inbox
-        turn ("You received these messages: [dispatch]...") alongside the
-        Task-prompt turn from _start_and_record. The child's sole input is the
-        Task prompt built below.
         """
-        # The child's system prompt is set by build_agent → create_deep_agent
-        # (from ~/.openmanus/agents/<name>/prompt.md). Do NOT prepend it here —
-        # prepending would duplicate it as a user message, wasting tokens and
-        # confusing role boundaries (system prompt should stay in the system
-        # slot, not be echoed back as a user instruction).
         prompt = task
 
         # DEFER until the caller's own stream finishes. We store only the
@@ -316,7 +302,7 @@ class StreamEngine:
         self._pending.setdefault(caller_session_id, []).append({
             "target_session_id": target_session_id,
             "prompt": prompt, "speaker": target_agent,
-            "scope_id": scope_id, "caller_session_id": caller_session_id,
+            "topic_id": topic_id, "caller_session_id": caller_session_id,
         })
         return target_session_id
 
@@ -325,10 +311,10 @@ class StreamEngine:
     ) -> str:
         from .agent_factory import build_agent, close_agent
 
-        agent = await build_agent(session_id)
+        agent, ctx = await build_agent(session_id)
         queue = channels.get_queue(session_id)
         st = _StreamState()
-        config = {"configurable": {"thread_id": session_id}}
+        config = ctx.to_config()
         await session_store.update(session_id, status="running", touch=True)
         final = "(no output)"
         try:
@@ -364,7 +350,7 @@ class StreamEngine:
                 task = asyncio.create_task(self._start_and_record(
                     target_session_id=p["target_session_id"],
                     prompt=p["prompt"], speaker=p["speaker"],
-                    scope_id=p["scope_id"], caller_session_id=p["caller_session_id"],
+                    topic_id=p["topic_id"], caller_session_id=p["caller_session_id"],
                 ))
                 self._tasks.add(task)
                 task.add_done_callback(self._tasks.discard)
@@ -377,18 +363,18 @@ class StreamEngine:
         return final
 
     async def _start_and_record(
-        self, *, target_session_id, prompt, speaker, scope_id, caller_session_id,
+        self, *, target_session_id, prompt, speaker, topic_id, caller_session_id,
     ):
         answer = await self._stream(
             session_id=target_session_id, prompt=prompt, speaker=speaker,
         )
         await self._record_result(
-            scope_id=scope_id, target_session_id=target_session_id,
+            topic_id=topic_id, target_session_id=target_session_id,
             caller_session_id=caller_session_id, target_agent=speaker, answer=answer or "",
         )
 
     async def _record_result(
-        self, *, scope_id, target_session_id, caller_session_id, target_agent, answer,
+        self, *, topic_id, target_session_id, caller_session_id, target_agent, answer,
     ):
         # Entry agent (Manus, kind="root") is a pure router: it dispatches once
         # and stops. It must NOT receive result mail — otherwise mailbox.send
@@ -398,11 +384,11 @@ class StreamEngine:
         caller = await session_store.get(caller_session_id)
         if caller and caller.get("kind") == "root":
             return
-        if not scope_id:
+        if not topic_id:
             return
         try:
             art = await whiteboard_store.create(
-                scope_id=scope_id, session_id=target_session_id,
+                scope_id=topic_id, session_id=target_session_id,
                 kind="result", title=f"{target_agent} result",
                 content=answer[:2000] or "(no output)",
             )

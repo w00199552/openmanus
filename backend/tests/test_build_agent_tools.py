@@ -141,7 +141,7 @@ def test_build_agent_wires_excluded_correctly():
 
             for sid, agent_name in SESSION_FIXTURES:
                 captured.clear()
-                agent = asyncio.run(factory_mod.build_agent(sid))
+                agent, ctx = asyncio.run(factory_mod.build_agent(sid))
                 assert captured, f"ToolGuardMiddleware was not constructed for {agent_name}"
                 guards[agent_name] = captured[0]
                 asyncio.run(factory_mod.close_agent(agent))

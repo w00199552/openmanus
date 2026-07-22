@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Any
 
+from ..agent_factory import build_agent, close_agent, compute_thread_id
 from ..db import session_store
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -22,7 +23,7 @@ class CreateSession(BaseModel):
     name: str | None = None
     title: str | None = None
     workdir: str | None = None
-    scope_id: str | None = None
+    topic_id: str = "main"
     metadata: dict[str, Any] = {}
 
 
@@ -41,7 +42,7 @@ class SessionSummary(BaseModel):
     title: str | None = None
     model: str | None = None
     workdir: str | None = None
-    scope_id: str | None = None
+    topic_id: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -54,7 +55,7 @@ async def create_session(body: CreateSession) -> dict:
         name=body.name,
         title=body.title,
         workdir=body.workdir,
-        scope_id=body.scope_id,
+        topic_id=body.topic_id,
         metadata=body.metadata,
     )
 
@@ -63,21 +64,17 @@ async def create_session(body: CreateSession) -> dict:
 @router.get("/", response_model=list[SessionSummary], include_in_schema=False)
 async def list_sessions(
     kind: str | None = None,
-    scope_id: str | None = None,
-    top_level: bool = False,
+    topic_id: str | None = None,
 ) -> list[dict]:
     """List sessions.
 
     Filters (combinable):
-      - ``kind``            only sessions of this kind
-      - ``scope_id``        only members of this team scope
-      - ``top_level=true``  only top-level sessions (scope_id IS NULL)
+      - ``kind``        only sessions of this kind
+      - ``topic_id``    only members of this topic
     With no filter, returns everything.
     """
-    if top_level:
-        return await session_store.list(kind=kind, scope_id=None)
-    if scope_id is not None:
-        return await session_store.list(kind=kind, scope_id=scope_id)
+    if topic_id is not None:
+        return await session_store.list(kind=kind, topic_id=topic_id)
     return await session_store.list(kind=kind)
 
 
@@ -101,11 +98,13 @@ async def get_session(session_id: str, request: Request) -> dict:
 
     messages: list[dict] = []
     try:
-        from ..agent_factory import build_agent, close_agent
         agent = await build_agent(session_id)
         try:
+            name = s.get("name") or ("TeamLeader" if s.get("kind") == "team" else "Manus")
+            topic_id = s.get("topic_id") or "main"
+            thread_id = compute_thread_id(topic_id, name)
             snapshot = await agent.aget_state(
-                {"configurable": {"thread_id": session_id}}
+                {"configurable": {"thread_id": thread_id}}
             )
         finally:
             await close_agent(agent)
@@ -249,12 +248,15 @@ async def reset_session(session_id: str, request: Request) -> dict:
     if not await session_store.get(session_id):
         raise HTTPException(status_code=404, detail="session not found")
     try:
-        from ..agent_factory import build_agent, close_agent
+        s = await session_store.get(session_id)
+        name = (s or {}).get("name") or ("TeamLeader" if (s or {}).get("kind") == "team" else "Manus")
+        topic_id = (s or {}).get("topic_id") or "main"
+        thread_id = compute_thread_id(topic_id, name)
         agent = await build_agent(session_id)
         try:
             checkpointer = getattr(agent, "checkpointer", None)
             if checkpointer is not None and hasattr(checkpointer, "adelete_thread"):
-                await checkpointer.adelete_thread(session_id)
+                await checkpointer.adelete_thread(thread_id)
         finally:
             await close_agent(agent)
     except Exception:
@@ -262,7 +264,7 @@ async def reset_session(session_id: str, request: Request) -> dict:
     return {"reset": session_id}
 
 
-# --- Mailbox + whiteboard views (per session / per scope) -------------------
+# --- Mailbox + whiteboard views (per session / per topic) --------------------
 
 @router.get("/{session_id}/mailbox")
 async def get_mailbox(session_id: str, unread_only: bool = False) -> dict:
@@ -283,10 +285,10 @@ async def get_whiteboard(session_id: str) -> dict:
         raise HTTPException(status_code=404, detail="session not found")
     from ..whiteboard import whiteboard_store
 
-    scope_id = s.get("scope_id")
-    in_scope = await whiteboard_store.list_in_scope(scope_id) if scope_id else []
+    topic_id = s.get("topic_id")
+    in_scope = await whiteboard_store.list_in_scope(topic_id) if topic_id else []
     authored = await whiteboard_store.list_by_author(session_id)
-    return {"session_id": session_id, "scope_id": scope_id, "in_scope": in_scope, "authored": authored}
+    return {"session_id": session_id, "topic_id": topic_id, "in_scope": in_scope, "authored": authored}
 
 
 # --- Workdir validation (top-level, not under /sessions) --------------------
