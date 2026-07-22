@@ -1,6 +1,6 @@
 """Topic + session storage: the collaboration registry.
 
-Tables (all in ``sessions.db``, separate from the checkpointer's
+Tables (all in ``openmanus.db``, separate from the checkpointer's
 ``checkpoints.db`` which holds message *content*):
 
 * ``topics``     — one row per task/conversation group. ``main`` is the fixed
@@ -34,16 +34,21 @@ from .config import settings
 
 
 def _db_path() -> str:
-    """Sessions DB path, derived from DATABASE_URL (kept next to checkpoints)."""
+    """App DB path (topics/sessions/mailboxes/whiteboard), derived from DATABASE_URL.
+
+    Kept next to the checkpointer's checkpoints.db (which holds LangGraph
+    message content). This file holds the collaboration metadata: topics,
+    sessions, mailboxes, whiteboard notes.
+    """
     url = settings.database_url
     path = url
     for prefix in ("sqlite:///", "sqlite://"):
         if path.startswith(prefix):
             path = path[len(prefix):]
             break
-    # checkpoints.db -> sessions.db (same dir)
+    # checkpoints.db -> openmanus.db (same dir)
     p = Path(path)
-    return str(p.with_name("sessions.db"))
+    return str(p.with_name("openmanus.db"))
 
 
 _SCHEMA = """
