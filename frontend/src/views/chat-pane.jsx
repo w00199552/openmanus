@@ -20,15 +20,12 @@ export const ChatPane = observer(function ChatPane({ onToggleCollapse }) {
     const { topics, runtime } = useStore();
     const active = topics.active;
     const sessionId = active?.session_id;
-    const isTeam = active?.kind === "team";
-    // team topic → topic view (fan-in); single topic → topic_id still passed
-    // (runtime uses it to scope membership + delegate-routing).
     const topicId = active?.id;
 
-    // When the active session/topic changes, tell the runtime to switch what it's
-    // observing (it loads history + rebuilds the SSE subscription).
+    // Every topic (single-agent or team) subscribes via ?topic= fan-in.
+    // A single-agent topic is just a team of one — same code path, no branching.
     useEffect(() => {
-        if (sessionId) runtime.setActive(sessionId, isTeam ? topicId : null);
+        if (sessionId) runtime.setActive(sessionId, topicId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId, topicId, isTeam]);
 

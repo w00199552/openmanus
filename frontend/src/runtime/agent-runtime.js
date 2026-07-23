@@ -168,7 +168,7 @@ export class AgentRuntime {
             this._resubscribe({ loadHistory: false });
         } else {
             this.streamClient.subscribe(
-                { sessions: [sessionId] },
+                { topic: this.activeTopicId },
                 {
                     onEvent: (e) => this._dispatchEvent(e),
                 }
@@ -365,10 +365,9 @@ export class AgentRuntime {
             }
         }
 
-        // open the subscription (topic mode for teams, sessions mode otherwise)
-        const spec = this.activeTopicId
-            ? { topic: this.activeTopicId }
-            : { sessions: [this.activeSessionId] };
+        // open the subscription — always via topic fan-in (a single-agent topic
+        // is just a team of one; same code path, no branching).
+        const spec = { topic: this.activeTopicId };
         this._subHandle = this.streamClient.subscribe(spec, {
             onEvent: (e) => this._dispatchEvent(e),
             onDone: () => {
