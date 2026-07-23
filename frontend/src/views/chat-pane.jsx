@@ -21,13 +21,14 @@ export const ChatPane = observer(function ChatPane({ onToggleCollapse }) {
     const active = topics.active;
     const sessionId = active?.session_id;
     const topicId = active?.id;
+    const isTeam = active?.kind === "team";
 
     // Every topic (single-agent or team) subscribes via ?topic= fan-in.
     // A single-agent topic is just a team of one — same code path, no branching.
     useEffect(() => {
         if (sessionId) runtime.setActive(sessionId, topicId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sessionId, topicId, isTeam]);
+    }, [sessionId, topicId]);
 
     /** "New chat" = reset the main topic's history. */
     const handleNewChat = async () => {
