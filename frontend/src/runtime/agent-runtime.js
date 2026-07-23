@@ -336,7 +336,7 @@ export class AgentRuntime {
             // For team topics the topic_id fans-in member sessions; for a single
             // subagent topic, just observe its session.
             const isTeam = child.kind === "team";
-            this.setActive(child.session_id || child.id, isTeam ? child.id : null);
+            this.setActive(child.session_id || child.id, child.id);
             this._topicStore.select(child.id);
         }
     }
