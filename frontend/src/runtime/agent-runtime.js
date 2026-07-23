@@ -337,6 +337,10 @@ export class AgentRuntime {
             // subagent topic, just observe its session.
             const isTeam = child.kind === "team";
             this.setActive(child.session_id || child.id, child.id);
+            // NOTE: if child.session_id is null, we pass child.id (topic id) as
+            // the focus session — _loadHistory will skip it (topic ids don't have
+            // history), and once the agent runs the SSE events will carry the real
+            // session_id.
             this._topicStore.select(child.id);
         }
     }
@@ -381,7 +385,10 @@ export class AgentRuntime {
 
     /** Load a session's history into the store (once). */
     async _loadHistory(sessionId) {
-        if (!sessionId || this.messageStore.isLoaded(sessionId)) return;
+        // Skip if this isn't a real session id (e.g. a topic id fallback when
+        // session_id was null — topic ids start with "topic-" or are "main").
+        if (!sessionId || sessionId === "main" || sessionId.startsWith("topic-")) return;
+        if (this.messageStore.isLoaded(sessionId)) return;
         try {
             const res = await fetch(
                 `${BACKEND}/sessions/${encodeURIComponent(sessionId)}`
