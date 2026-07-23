@@ -180,7 +180,7 @@ export class AgentRuntime {
         this._sendAborts[topicId] = ac;
         try {
             const res = await fetch(
-                `${BACKEND}/topics/${encodeURIComponent(topicId)}/messages`,
+                `/topics/${encodeURIComponent(topicId)}/messages`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },

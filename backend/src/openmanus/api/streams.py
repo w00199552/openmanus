@@ -260,7 +260,7 @@ async def post_topic_message(topic_id: str, body: PostMessage) -> dict:
             speaker=speaker,
         )
     )
-    return {"ok": True, "session_id": default_session["id"]}
+    return {"ok": True, "session_id": target_session["id"]}
 
 
 async def _sse_byte_stream(
