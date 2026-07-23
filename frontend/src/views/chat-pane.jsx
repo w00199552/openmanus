@@ -11,24 +11,24 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 /**
  * ChatPane — the middle column, driven by the multi-agent runtime.
  *
- * One unified view: the runtime's `activeMessages` is either a single session's
- * messages (1:1) or the team's merged timeline (group chat). Switching the
- * active topic rebinds the runtime's live subscription; the runtime owns all
- * streaming state, this component just reads observables + forwards actions.
+ * One unified view: the runtime's `activeMessages` is the active topic's
+ * merged timeline (the backend fans in all member sessions of the topic on
+ * the stream). Switching the active topic rebinds the runtime's live
+ * subscription; the runtime owns all streaming state, this component just
+ * reads observables + forwards actions.
  */
 export const ChatPane = observer(function ChatPane({ onToggleCollapse }) {
     const { topics, runtime } = useStore();
     const active = topics.active;
-    const sessionId = active?.session_id;
     const topicId = active?.id;
     const isTeam = active?.kind === "team";
 
     // Every topic (single-agent or team) subscribes via ?topic= fan-in.
     // A single-agent topic is just a team of one — same code path, no branching.
     useEffect(() => {
-        if (sessionId) runtime.setActive(sessionId, topicId);
+        if (topicId) runtime.setActive(topicId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sessionId, topicId]);
+    }, [topicId]);
 
     /** "New chat" = reset the main topic's history. */
     const handleNewChat = async () => {
@@ -84,8 +84,8 @@ export const ChatPane = observer(function ChatPane({ onToggleCollapse }) {
 
                 {/* input: reuse the existing ChatInput, wired to the runtime */}
                 <ChatInput
-                    onSend={(text) => runtime.send(sessionId, text)}
-                    onStop={() => runtime.stop(sessionId)}
+                    onSend={(text) => runtime.send(topicId, text)}
+                    onStop={() => runtime.stop(topicId)}
                     isLoading={runtime.isRunning}
                     showNewChat={active?.kind === "root"}
                     onNewChat={handleNewChat}

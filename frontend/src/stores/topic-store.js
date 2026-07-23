@@ -15,7 +15,10 @@ export const MAIN_TOPIC_ID = "main";
  * the active topic id. Each topic maps to one task/conversation group.
  *
  * Topics come from GET /topics; each carries a `session_id` (the latest
- * session in that topic) so the runtime can subscribe to SSE + load history.
+ * session in that topic) but the frontend keys runs by topic_id now
+ * (POST /topics/{topic_id}/messages), so session_id stays on the topic object
+ * for places that still need it (e.g. the cd API) but isn't tracked as
+ * top-level runtime state anymore.
  */
 export class TopicStore {
     topics = [];
@@ -32,11 +35,6 @@ export class TopicStore {
     /** The active topic object (or null if not loaded yet). */
     get active() {
         return this.topics.find((t) => t.id === this.activeTopicId) || null;
-    }
-
-    /** The active topic's session_id (for SSE subscription + history load). */
-    get activeSessionId() {
-        return this.active?.session_id || null;
     }
 
     /** Topics sorted by last-activity, main pinned to top. */

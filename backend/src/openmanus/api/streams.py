@@ -168,6 +168,85 @@ async def post_message(
     return {"ok": True, "session_id": session_id}
 
 
+# ─── Topic-level message (frontend doesn't manage session_id) ──────────────
+
+
+def _default_agent_name(topic_id: str, sessions: list[dict]) -> str:
+    """Determine the default agent for a topic.
+
+    - main topic → Manus
+    - team topic (has TeamLeader) → TeamLeader
+    - single-agent topic → that agent
+    """
+    if topic_id == "main":
+        return "Manus"
+    names = [s.get("name") for s in sessions if s.get("name")]
+    if "TeamLeader" in names:
+        return "TeamLeader"
+    if names:
+        return names[0]
+    return "Manus"  # fallback for empty topic
+
+
+def _find_default_session(topic_id: str, sessions: list[dict]) -> dict | None:
+    """Find the default agent's latest session in a topic."""
+    if topic_id == "main":
+        for s in sessions:
+            if s.get("name") == "Manus":
+                return s
+        return None
+    # Team → TeamLeader session
+    for s in sessions:
+        if s.get("name") == "TeamLeader":
+            return s
+    # No TeamLeader → first subagent/team session
+    for s in sessions:
+        if s.get("kind") in ("subagent", "team"):
+            return s
+    return sessions[0] if sessions else None
+
+
+@router.post("/topics/{topic_id}/messages")
+async def post_topic_message(topic_id: str, body: PostMessage) -> dict:
+    """Send a user message to a topic's default agent.
+
+    Finds (or creates) the default agent's session in this topic, then
+    triggers the agent run. The frontend only needs the topic_id — it
+    doesn't manage session_id at all.
+
+    Default agent:
+      - main topic → Manus
+      - single-agent topic → that agent
+      - team topic → TeamLeader
+    """
+    topic = await topic_store.get(topic_id)
+    if not topic:
+        raise HTTPException(status_code=404, detail="topic not found")
+
+    sessions = await session_store.list_in_topic(topic_id)
+    default_session = _find_default_session(topic_id, sessions)
+
+    if not default_session:
+        # No session yet → create one for the default agent
+        agent_name = _default_agent_name(topic_id, sessions)
+        default_session = await session_store.create(
+            topic_id=topic_id,
+            kind="root" if topic_id == "main" else "subagent",
+            name=agent_name,
+            title=agent_name,
+        )
+
+    speaker = default_session.get("name") or "Manus"
+    asyncio.create_task(
+        engine._stream(
+            session_id=default_session["id"],
+            prompt=body.content,
+            speaker=speaker,
+        )
+    )
+    return {"ok": True, "session_id": default_session["id"]}
+
+
 async def _sse_byte_stream(
     topic: str | None, sessions: list[str] | None
 ) -> Any:
