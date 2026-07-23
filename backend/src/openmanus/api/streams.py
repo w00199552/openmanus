@@ -46,6 +46,7 @@ router = APIRouter(tags=["streams"])
 
 class PostMessage(BaseModel):
     content: str
+    target_agent: str | None = None  # @-mention target; None = topic's default agent
 
 
 class CdBody(BaseModel):
@@ -208,38 +209,53 @@ def _find_default_session(topic_id: str, sessions: list[dict]) -> dict | None:
 
 @router.post("/topics/{topic_id}/messages")
 async def post_topic_message(topic_id: str, body: PostMessage) -> dict:
-    """Send a user message to a topic's default agent.
+    """Send a user message to a topic's agent.
 
-    Finds (or creates) the default agent's session in this topic, then
-    triggers the agent run. The frontend only needs the topic_id — it
-    doesn't manage session_id at all.
-
-    Default agent:
+    If ``target_agent`` is specified (via @-mention, parsed by the frontend),
+    the message goes to that agent's session. Otherwise it goes to the topic's
+    default agent:
       - main topic → Manus
       - single-agent topic → that agent
       - team topic → TeamLeader
+
+    Finds (or creates) the target agent's session in this topic, then triggers
+    the agent run. The frontend only needs the topic_id — it doesn't manage
+    session_id.
     """
     topic = await topic_store.get(topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="topic not found")
 
     sessions = await session_store.list_in_topic(topic_id)
-    default_session = _find_default_session(topic_id, sessions)
 
-    if not default_session:
-        # No session yet → create one for the default agent
-        agent_name = _default_agent_name(topic_id, sessions)
-        default_session = await session_store.create(
-            topic_id=topic_id,
-            kind="root" if topic_id == "main" else "subagent",
-            name=agent_name,
-            title=agent_name,
-        )
+    # Determine which agent to send to
+    if body.target_agent:
+        # @-mention: find or create the specified agent's session
+        target_session = None
+        for s in sessions:
+            if s.get("name") == body.target_agent:
+                target_session = s
+                break
+        if not target_session:
+            target_session = await session_store.create(
+                topic_id=topic_id, kind="subagent",
+                name=body.target_agent, title=body.target_agent,
+            )
+    else:
+        # Default agent
+        target_session = _find_default_session(topic_id, sessions)
+        if not target_session:
+            agent_name = _default_agent_name(topic_id, sessions)
+            target_session = await session_store.create(
+                topic_id=topic_id,
+                kind="root" if topic_id == "main" else "subagent",
+                name=agent_name, title=agent_name,
+            )
 
-    speaker = default_session.get("name") or "Manus"
+    speaker = target_session.get("name") or "Manus"
     asyncio.create_task(
         engine._stream(
-            session_id=default_session["id"],
+            session_id=target_session["id"],
             prompt=body.content,
             speaker=speaker,
         )

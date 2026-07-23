@@ -117,6 +117,18 @@ export class AgentRuntime {
             return;
         }
 
+        // ── @-mention: parse "@AgentName rest of message" ──────────────
+        // If the message starts with @AgentName, extract the target agent
+        // and send only the remaining text. Otherwise send to the topic's
+        // default agent (target_agent = null).
+        let targetAgent = null;
+        let messageText = text;
+        const mentionMatch = trimmed.match(/^@(\w+)\s*(.*)$/s);
+        if (mentionMatch) {
+            targetAgent = mentionMatch[1];
+            messageText = mentionMatch[2].trim() || text; // keep original if nothing after @
+        }
+
         // Snapshot topic ids BEFORE the turn — used by _afterDelegation to detect
         // NEW topics created during this turn (dispatch may create team/subagent
         // topics, and the topic list may get reloaded mid-turn, so we can't
@@ -172,7 +184,7 @@ export class AgentRuntime {
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ content: text }),
+                    body: JSON.stringify({ content: messageText, target_agent: targetAgent }),
                     signal: ac.signal,
                 }
             );
